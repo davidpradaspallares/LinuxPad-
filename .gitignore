@@ -1,0 +1,13 @@
+# Repo root ignores
+.vscode/
+
+# Project folder
+LinuxPad++/node_modules/
+LinuxPad++/dist/
+LinuxPad++/.vite/
+LinuxPad++/src-tauri/target/
+LinuxPad++/src-tauri/gen/schemas/
+LinuxPad++/.cargo/
+LinuxPad++/.env
+LinuxPad++/.env.*
+!LinuxPad++/.env.example
