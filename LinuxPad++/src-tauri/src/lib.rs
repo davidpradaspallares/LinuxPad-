@@ -20,6 +20,7 @@ pub fn run() {
             delete_path,
             get_home_dir,
             path_exists,
+            rename_path,
             // File watcher
             watch_file,
             unwatch_file,

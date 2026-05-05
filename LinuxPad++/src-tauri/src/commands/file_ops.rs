@@ -126,3 +126,9 @@ pub async fn get_home_dir() -> Result<String, String> {
 pub async fn path_exists(path: String) -> bool {
     Path::new(&path).exists()
 }
+
+#[tauri::command]
+pub async fn rename_path(old_path: String, new_path: String) -> Result<(), String> {
+    fs::rename(&old_path, &new_path)
+        .map_err(|e| format!("Failed to rename '{}': {}", old_path, e))
+}

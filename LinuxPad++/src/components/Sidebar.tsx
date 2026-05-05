@@ -26,10 +26,11 @@ interface TreeItemProps {
   onToggle: (path: string) => void;
   onOpen: (path: string) => void;
   onDelete: (path: string) => void;
+  onRename: (path: string) => void;
 }
 
-function TreeItem({ node, depth, onToggle, onOpen, onDelete }: TreeItemProps) {
-  const [showMenu, setShowMenu] = useState(false);
+function TreeItem({ node, depth, onToggle, onOpen, onDelete, onRename }: TreeItemProps) {
+  const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
 
   const handleClick = () => {
     if (node.is_dir) {
@@ -41,7 +42,7 @@ function TreeItem({ node, depth, onToggle, onOpen, onDelete }: TreeItemProps) {
 
   const handleRightClick = (e: React.MouseEvent) => {
     e.preventDefault();
-    setShowMenu(true);
+    setMenuPos({ x: e.clientX, y: e.clientY });
   };
 
   return (
@@ -84,11 +85,28 @@ function TreeItem({ node, depth, onToggle, onOpen, onDelete }: TreeItemProps) {
         </button>
       </div>
 
-      {showMenu && (
-        <div
-          className="fixed inset-0 z-50"
-          onClick={() => setShowMenu(false)}
-        />
+      {menuPos && (
+        <>
+          <div className="fixed inset-0 z-50" onClick={() => setMenuPos(null)} />
+          <div
+            className="fixed z-50 bg-surface-800 border border-surface-600 rounded shadow-lg py-1 text-sm min-w-[140px]"
+            style={{ left: menuPos.x, top: menuPos.y }}
+          >
+            <button
+              onClick={() => { setMenuPos(null); onRename(node.path); }}
+              className="w-full px-4 py-1.5 text-left hover:bg-surface-700 text-slate-200"
+            >
+              Rename
+            </button>
+            <div className="border-t border-surface-600 my-1" />
+            <button
+              onClick={() => { setMenuPos(null); onDelete(node.path); }}
+              className="w-full px-4 py-1.5 text-left hover:bg-red-900 text-red-300"
+            >
+              Delete
+            </button>
+          </div>
+        </>
       )}
 
       {node.is_dir && node.isOpen && node.children && (
@@ -101,6 +119,7 @@ function TreeItem({ node, depth, onToggle, onOpen, onDelete }: TreeItemProps) {
               onToggle={onToggle}
               onOpen={onOpen}
               onDelete={onDelete}
+              onRename={onRename}
             />
           ))}
         </div>
@@ -113,6 +132,7 @@ export default function Sidebar() {
   const sidebarPath = useEditorStore((s) => s.sidebarPath);
   const setSidebarPath = useEditorStore((s) => s.setSidebarPath);
   const openFile = useEditorStore((s) => s.openFile);
+  const renameTabPath = useEditorStore((s) => s.renameTabPath);
 
   const [tree, setTree] = useState<TreeNode[]>([]);
   const [loading, setLoading] = useState(false);
@@ -200,6 +220,21 @@ export default function Sidebar() {
     }
   }, [refresh]);
 
+  const handleRename = useCallback(async (path: string) => {
+    const oldName = path.split("/").pop()!;
+    const newName = prompt("New name:", oldName);
+    if (!newName || newName === oldName) return;
+    const newPath = path.slice(0, path.lastIndexOf("/") + 1) + newName;
+    try {
+      await invoke("rename_path", { oldPath: path, newPath });
+      renameTabPath(path, newPath);
+      setOpenDirs({});
+      refresh();
+    } catch (err) {
+      console.error("Failed to rename:", err);
+    }
+  }, [refresh, renameTabPath]);
+
   const handleNewFile = async () => {
     const name = prompt("File name:");
     if (!name) return;
@@ -283,6 +318,7 @@ export default function Sidebar() {
               onToggle={handleToggle}
               onOpen={openFile}
               onDelete={handleDelete}
+              onRename={handleRename}
             />
           ))
         )}

@@ -7,10 +7,9 @@ interface FindReplaceProps {
 }
 
 export default function FindReplace({ onClose }: FindReplaceProps) {
-  const tabs = useEditorStore((s) => s.tabs);
   const activeTabId = useEditorStore((s) => s.activeTabId);
   const updateTabContent = useEditorStore((s) => s.updateTabContent);
-  const tab = tabs.find((t) => t.id === activeTabId);
+  const tab = useEditorStore((s) => s.tabs.find((candidate) => candidate.id === s.activeTabId) ?? null);
 
   const [query, setQuery] = useState("");
   const [replacement, setReplacement] = useState("");
@@ -43,15 +42,28 @@ export default function FindReplace({ onClose }: FindReplaceProps) {
   };
 
   useEffect(() => {
-    if (!query || !tab) {
+    const timer = window.setTimeout(() => {
+      if (!query || !tab) {
+        setMatchCount(0);
+        return;
+      }
+
+      const rx = buildRegex();
+      if (!rx) return;
+      const matches = tab.content.match(rx);
+      setMatchCount(matches?.length ?? 0);
+    }, 120);
+
+    return () => window.clearTimeout(timer);
+  }, [query, caseSensitive, wholeWord, useRegex, tab?.content, tab?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!query) {
+      setError("");
       setMatchCount(0);
       return;
     }
-    const rx = buildRegex();
-    if (!rx) return;
-    const matches = tab.content.match(rx);
-    setMatchCount(matches?.length ?? 0);
-  }, [query, caseSensitive, wholeWord, useRegex, tab?.content]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [query]);
 
   const handleReplaceAll = () => {
     if (!tab || !activeTabId || !query) return;

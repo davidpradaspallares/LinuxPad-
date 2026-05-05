@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { invoke } from "@tauri-apps/api/core";
-import type { Tab, CursorPosition } from "../types";
+import type { Tab, CursorPosition, ColorRule } from "../types";
 
 const LANGUAGE_MAP: Record<string, string> = {
   ts: "typescript", tsx: "typescript",
@@ -52,6 +52,7 @@ function makeTab(partial: Partial<Tab> = {}): Tab {
     content: "",
     isDirty: false,
     language: "plaintext",
+    type: "code",
     cursorPosition: { line: 1, column: 1 },
     encoding: "UTF-8",
     scrollTop: 0,
@@ -62,30 +63,54 @@ function makeTab(partial: Partial<Tab> = {}): Tab {
 interface EditorStore {
   tabs: Tab[];
   activeTabId: string | null;
+  tabsMetaVersion: number;
+  activeCursorPosition: CursorPosition;
+  wordWrapEnabled: boolean;
+  editorFontSize: number;
   sidebarOpen: boolean;
   sidebarPath: string;
   commandPaletteOpen: boolean;
   findReplaceOpen: boolean;
+  colorRules: ColorRule[];
+  diagramSettings: {
+    showMiniMap: boolean;
+    showControls: boolean;
+    showBackground: boolean;
+    showToolbar: boolean;
+    showPropertiesPanel: boolean;
+    showTopPanel: boolean;
+    handleHitArea: number;
+  };
 
   // Tab management
   newTab: () => void;
   closeTab: (id: string) => void;
   setActiveTab: (id: string) => void;
   updateTabContent: (id: string, content: string) => void;
+  setTabContent: (id: string, content: string) => void;
   updateTabCursor: (id: string, pos: CursorPosition) => void;
   updateTabScroll: (id: string, scrollTop: number) => void;
+  renameTabPath: (oldPath: string, newPath: string) => void;
+  setTabTitle: (id: string, title: string) => void;
 
   // File I/O
   openFile: (path: string) => Promise<void>;
   saveTab: (id: string, path?: string) => Promise<void>;
   reloadTabFromDisk: (path: string) => Promise<void>;
+  newDiagramTab: () => void;
 
   // UI state
   setSidebarOpen: (open: boolean) => void;
   toggleSidebar: () => void;
   setSidebarPath: (path: string) => void;
+  toggleWordWrap: () => void;
+  adjustEditorFontSize: (delta: number) => void;
   setCommandPaletteOpen: (open: boolean) => void;
   setFindReplaceOpen: (open: boolean) => void;
+  addColorRule: (trigger: string, color: string) => void;
+  removeColorRule: (id: string) => void;
+  toggleColorRule: (id: string) => void;
+  setDiagramSetting: (key: keyof EditorStore['diagramSettings'], value: boolean | number) => void;
 
   // Session restore
   restoreSession: () => Promise<void>;
@@ -96,14 +121,43 @@ export const useEditorStore = create<EditorStore>()(
     (set, get) => ({
       tabs: [],
       activeTabId: null,
+      tabsMetaVersion: 0,
+      activeCursorPosition: { line: 1, column: 1 },
+      wordWrapEnabled: false,
+      editorFontSize: 14,
       sidebarOpen: true,
       sidebarPath: "~",
       commandPaletteOpen: false,
       findReplaceOpen: false,
+      colorRules: [],
+      diagramSettings: {
+        showMiniMap: true,
+        showControls: true,
+        showBackground: true,
+        showToolbar: true,
+        showPropertiesPanel: true,
+        showTopPanel: true,
+        handleHitArea: 20,
+      },
 
       newTab: () => {
         const tab = makeTab();
-        set((s) => ({ tabs: [...s.tabs, tab], activeTabId: tab.id }));
+        set((s) => ({
+          tabs: [...s.tabs, tab],
+          activeTabId: tab.id,
+          activeCursorPosition: tab.cursorPosition,
+          tabsMetaVersion: s.tabsMetaVersion + 1,
+        }));
+      },
+
+      newDiagramTab: () => {
+        const tab = makeTab({ title: "Diagram", type: "diagram", language: "diagram", content: "{}" });
+        set((s) => ({
+          tabs: [...s.tabs, tab],
+          activeTabId: tab.id,
+          activeCursorPosition: tab.cursorPosition,
+          tabsMetaVersion: s.tabsMetaVersion + 1,
+        }));
       },
 
       closeTab: (id) => {
@@ -119,34 +173,101 @@ export const useEditorStore = create<EditorStore>()(
 
         if (remaining.length === 0) {
           const blank = makeTab();
-          set({ tabs: [blank], activeTabId: blank.id });
+          set((s) => ({
+            tabs: [blank],
+            activeTabId: blank.id,
+            activeCursorPosition: blank.cursorPosition,
+            tabsMetaVersion: s.tabsMetaVersion + 1,
+          }));
         } else {
-          set({ tabs: remaining, activeTabId: nextActive });
+          const nextTab = remaining.find((t) => t.id === nextActive) ?? remaining[0];
+          set((s) => ({
+            tabs: remaining,
+            activeTabId: nextActive,
+            activeCursorPosition: nextTab?.cursorPosition ?? { line: 1, column: 1 },
+            tabsMetaVersion: s.tabsMetaVersion + 1,
+          }));
         }
       },
 
-      setActiveTab: (id) => set({ activeTabId: id }),
+      setActiveTab: (id) =>
+        set((s) => {
+          const tab = s.tabs.find((candidate) => candidate.id === id);
+          return {
+            activeTabId: id,
+            activeCursorPosition: tab?.cursorPosition ?? { line: 1, column: 1 },
+          };
+        }),
 
       updateTabContent: (id, content) =>
-        set((s) => ({
-          tabs: s.tabs.map((t) =>
-            t.id === id ? { ...t, content, isDirty: true } : t
-          ),
-        })),
+        set((s) => {
+          const tab = s.tabs.find((candidate) => candidate.id === id);
+          if (!tab || tab.content === content) return {};
+
+          const wasDirty = tab.isDirty;
+          tab.content = content;
+          tab.isDirty = true;
+
+          return wasDirty ? {} : { tabsMetaVersion: s.tabsMetaVersion + 1 };
+        }),
+
+      setTabContent: (id, content) =>
+        set((s) => {
+          const idx = s.tabs.findIndex((t) => t.id === id);
+          console.log("[setTabContent] id:", id, "idx:", idx);
+          if (idx === -1) { console.log("[setTabContent] abort: tab not found"); return {}; }
+          const tab = s.tabs[idx];
+          console.log("[setTabContent] content same?", tab.content === content);
+          if (tab.content === content) { console.log("[setTabContent] abort: content unchanged"); return {}; }
+          const newTabs = [...s.tabs];
+          newTabs[idx] = { ...tab, content, isDirty: true };
+          console.log("[setTabContent] returning new tabs, new metaVersion:", s.tabsMetaVersion + 1);
+          return { tabs: newTabs, tabsMetaVersion: s.tabsMetaVersion + 1 };
+        }),
 
       updateTabCursor: (id, pos) =>
-        set((s) => ({
-          tabs: s.tabs.map((t) =>
-            t.id === id ? { ...t, cursorPosition: pos } : t
-          ),
-        })),
+        set((s) => {
+          const tab = s.tabs.find((candidate) => candidate.id === id);
+          if (!tab) return {};
+
+          tab.cursorPosition = pos;
+
+          if (s.activeTabId === id) {
+            return { activeCursorPosition: pos };
+          }
+
+          return {};
+        }),
 
       updateTabScroll: (id, scrollTop) =>
-        set((s) => ({
-          tabs: s.tabs.map((t) =>
-            t.id === id ? { ...t, scrollTop } : t
-          ),
-        })),
+        set((s) => {
+          const tab = s.tabs.find((candidate) => candidate.id === id);
+          if (!tab || tab.scrollTop === scrollTop) return {};
+          tab.scrollTop = scrollTop;
+          return {};
+        }),
+
+      renameTabPath: (oldPath, newPath) =>
+        set((s) => {
+          const idx = s.tabs.findIndex((t) => t.path === oldPath);
+          if (idx === -1) return {};
+          const newTabs = [...s.tabs];
+          newTabs[idx] = {
+            ...newTabs[idx],
+            path: newPath,
+            title: newPath.split("/").pop() ?? newPath,
+          };
+          return { tabs: newTabs, tabsMetaVersion: s.tabsMetaVersion + 1 };
+        }),
+
+      setTabTitle: (id, title) =>
+        set((s) => {
+          const idx = s.tabs.findIndex((t) => t.id === id);
+          if (idx === -1) return {};
+          const newTabs = [...s.tabs];
+          newTabs[idx] = { ...newTabs[idx], title };
+          return { tabs: newTabs, tabsMetaVersion: s.tabsMetaVersion + 1 };
+        }),
 
       openFile: async (path) => {
         const { tabs } = get();
@@ -154,13 +275,15 @@ export const useEditorStore = create<EditorStore>()(
         // If already open, switch to it
         const existing = tabs.find((t) => t.path === path);
         if (existing) {
-          set({ activeTabId: existing.id });
+          set({ activeTabId: existing.id, activeCursorPosition: existing.cursorPosition });
           return;
         }
 
         const content = await invoke<string>("read_file", { path });
         const filename = path.split("/").pop() ?? path;
-        const language = detectLanguage(path);
+        const isDiagram = path.endsWith(".diagram");
+        const language = isDiagram ? "diagram" : detectLanguage(path);
+        const tabType: Tab["type"] = isDiagram ? "diagram" : "code";
 
         // Replace a blank untitled tab if it's the only one and unmodified
         const { tabs: currentTabs, activeTabId } = get();
@@ -172,14 +295,22 @@ export const useEditorStore = create<EditorStore>()(
           !active.isDirty &&
           active.content === ""
         ) {
-          set({
-            tabs: [{ ...active, title: filename, path, content, language, isDirty: false }],
-          });
+          const nextTab = { ...active, title: filename, path, content, language, type: tabType, isDirty: false };
+          set((s) => ({
+            tabs: [nextTab],
+            activeCursorPosition: nextTab.cursorPosition,
+            tabsMetaVersion: s.tabsMetaVersion + 1,
+          }));
           return;
         }
 
-        const tab = makeTab({ title: filename, path, content, language });
-        set((s) => ({ tabs: [...s.tabs, tab], activeTabId: tab.id }));
+        const tab = makeTab({ title: filename, path, content, language, type: tabType });
+        set((s) => ({
+          tabs: [...s.tabs, tab],
+          activeTabId: tab.id,
+          activeCursorPosition: tab.cursorPosition,
+          tabsMetaVersion: s.tabsMetaVersion + 1,
+        }));
       },
 
       saveTab: async (id, savePath) => {
@@ -194,29 +325,70 @@ export const useEditorStore = create<EditorStore>()(
 
         const filename = targetPath.split("/").pop() ?? targetPath;
         const language = detectLanguage(targetPath);
-        set((s) => ({
-          tabs: s.tabs.map((t) =>
-            t.id === id
-              ? { ...t, path: targetPath, title: filename, isDirty: false, language }
-              : t
-          ),
-        }));
+        set((s) => {
+          const targetTab = s.tabs.find((candidate) => candidate.id === id);
+          if (!targetTab) return {};
+
+          targetTab.path = targetPath;
+          targetTab.title = filename;
+          targetTab.isDirty = false;
+          targetTab.language = language;
+
+          return { tabsMetaVersion: s.tabsMetaVersion + 1 };
+        });
       },
 
       reloadTabFromDisk: async (path) => {
         const content = await invoke<string>("read_file", { path });
-        set((s) => ({
-          tabs: s.tabs.map((t) =>
-            t.path === path ? { ...t, content, isDirty: false } : t
-          ),
-        }));
+        set((s) => {
+          let shouldBumpMeta = false;
+
+          for (const tab of s.tabs) {
+            if (tab.path !== path) continue;
+            shouldBumpMeta = shouldBumpMeta || tab.isDirty;
+            tab.content = content;
+            tab.isDirty = false;
+          }
+
+          return shouldBumpMeta ? { tabsMetaVersion: s.tabsMetaVersion + 1 } : {};
+        });
       },
 
       setSidebarOpen: (open) => set({ sidebarOpen: open }),
       toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
       setSidebarPath: (path) => set({ sidebarPath: path }),
+      toggleWordWrap: () => set((s) => ({ wordWrapEnabled: !s.wordWrapEnabled })),
+      adjustEditorFontSize: (delta) =>
+        set((s) => ({
+          editorFontSize: Math.max(10, Math.min(40, s.editorFontSize + delta)),
+        })),
       setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
       setFindReplaceOpen: (open) => set({ findReplaceOpen: open }),
+      addColorRule: (trigger, color) =>
+        set((s) => ({
+          colorRules: [
+            ...s.colorRules,
+            {
+              id: crypto.randomUUID(),
+              trigger,
+              color,
+              enabled: true,
+              createdAt: Date.now(),
+            },
+          ],
+        })),
+      removeColorRule: (id) =>
+        set((s) => ({
+          colorRules: s.colorRules.filter((rule) => rule.id !== id),
+        })),
+      toggleColorRule: (id) =>
+        set((s) => ({
+          colorRules: s.colorRules.map((rule) =>
+            rule.id === id ? { ...rule, enabled: !rule.enabled } : rule
+          ),
+        })),
+      setDiagramSetting: (key, value) =>
+        set((s) => ({ diagramSettings: { ...s.diagramSettings, [key]: value } })),
 
       restoreSession: async () => {
         const { tabs } = get();
@@ -239,7 +411,12 @@ export const useEditorStore = create<EditorStore>()(
             }
           })
         );
-        set({ tabs: updated });
+        const activeTab = updated.find((tab) => tab.id === get().activeTabId) ?? updated[0];
+        set((s) => ({
+          tabs: updated,
+          activeCursorPosition: activeTab?.cursorPosition ?? { line: 1, column: 1 },
+          tabsMetaVersion: s.tabsMetaVersion + 1,
+        }));
       },
     }),
     {
@@ -248,8 +425,12 @@ export const useEditorStore = create<EditorStore>()(
       partialize: (s) => ({
         tabs: s.tabs,
         activeTabId: s.activeTabId,
+        wordWrapEnabled: s.wordWrapEnabled,
+        editorFontSize: s.editorFontSize,
         sidebarOpen: s.sidebarOpen,
         sidebarPath: s.sidebarPath,
+        colorRules: s.colorRules,
+        diagramSettings: s.diagramSettings,
       }),
     }
   )

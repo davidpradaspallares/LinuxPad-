@@ -9,7 +9,15 @@ interface CommandPaletteProps {
 }
 
 export default function CommandPalette({ onClose }: CommandPaletteProps) {
-  const store = useEditorStore();
+  const tabs = useEditorStore((s) => s.tabs);
+  const tabsMetaVersion = useEditorStore((s) => s.tabsMetaVersion);
+  const newTab = useEditorStore((s) => s.newTab);
+  const openFile = useEditorStore((s) => s.openFile);
+  const saveTab = useEditorStore((s) => s.saveTab);
+  const closeTab = useEditorStore((s) => s.closeTab);
+  const toggleSidebar = useEditorStore((s) => s.toggleSidebar);
+  const setFindReplaceOpen = useEditorStore((s) => s.setFindReplaceOpen);
+  const setActiveTab = useEditorStore((s) => s.setActiveTab);
   const [query, setQuery] = useState("");
   const [selectedIdx, setSelectedIdx] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -25,7 +33,7 @@ export default function CommandPalette({ onClose }: CommandPaletteProps) {
       label: "New Tab",
       description: "Open a blank editor tab",
       shortcut: "Ctrl+N",
-      action: () => store.newTab(),
+      action: () => newTab(),
     },
     {
       id: "open-file",
@@ -34,7 +42,7 @@ export default function CommandPalette({ onClose }: CommandPaletteProps) {
       shortcut: "Ctrl+O",
       action: async () => {
         const path = await open({ multiple: false });
-        if (path && typeof path === "string") store.openFile(path);
+        if (path && typeof path === "string") openFile(path);
       },
     },
     {
@@ -42,15 +50,15 @@ export default function CommandPalette({ onClose }: CommandPaletteProps) {
       label: "Save",
       shortcut: "Ctrl+S",
       action: async () => {
-        const { activeTabId, tabs } = store;
+        const { activeTabId } = useEditorStore.getState();
         if (!activeTabId) return;
         const tab = tabs.find((t) => t.id === activeTabId);
         if (!tab) return;
         if (tab.path) {
-          await store.saveTab(activeTabId);
+          await saveTab(activeTabId);
         } else {
           const path = await save({ defaultPath: "untitled.txt" });
-          if (path) await store.saveTab(activeTabId, path);
+          if (path) await saveTab(activeTabId, path);
         }
       },
     },
@@ -59,10 +67,10 @@ export default function CommandPalette({ onClose }: CommandPaletteProps) {
       label: "Save As…",
       shortcut: "Ctrl+Shift+S",
       action: async () => {
-        const { activeTabId } = store;
+        const { activeTabId } = useEditorStore.getState();
         if (!activeTabId) return;
         const path = await save({ filters: [{ name: "All Files", extensions: ["*"] }] });
-        if (path) await store.saveTab(activeTabId, path);
+        if (path) await saveTab(activeTabId, path);
       },
     },
     {
@@ -70,30 +78,31 @@ export default function CommandPalette({ onClose }: CommandPaletteProps) {
       label: "Close Tab",
       shortcut: "Ctrl+W",
       action: () => {
-        if (store.activeTabId) store.closeTab(store.activeTabId);
+        const { activeTabId } = useEditorStore.getState();
+        if (activeTabId) closeTab(activeTabId);
       },
     },
     {
       id: "toggle-sidebar",
       label: "Toggle Sidebar",
       shortcut: "Ctrl+B",
-      action: () => store.toggleSidebar(),
+      action: () => toggleSidebar(),
     },
     {
       id: "find-replace",
       label: "Find & Replace",
       shortcut: "Ctrl+F",
-      action: () => store.setFindReplaceOpen(true),
+      action: () => setFindReplaceOpen(true),
     },
-    ...store.tabs
+    ...tabs
       .filter((t) => t.path !== null)
       .map((t) => ({
         id: `goto-${t.id}`,
         label: t.title,
         description: t.path ?? undefined,
-        action: () => store.setActiveTab(t.id),
+        action: () => setActiveTab(t.id),
       })),
-  ], [store]); // eslint-disable-line react-hooks/exhaustive-deps
+  ], [closeTab, newTab, openFile, saveTab, setActiveTab, setFindReplaceOpen, tabs, tabsMetaVersion, toggleSidebar]);
 
   const filtered = useMemo(() => {
     if (!query) return allCommands;

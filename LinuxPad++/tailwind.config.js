@@ -5,8 +5,8 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        mono: ["JetBrains Mono", "Fira Code", "Cascadia Code", "monospace"],
-        sans: ["Inter", "system-ui", "sans-serif"],
+        mono: ["JetBrains Mono", "monospace"],
+        sans: ["JetBrains Mono", "monospace"],
       },
       colors: {
         surface: {

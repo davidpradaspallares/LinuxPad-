@@ -1,0 +1,239 @@
+===========================================================
+  LinuxPad++ — Funcionalidades Implementadas
+  Fecha: 2026-05-04
+===========================================================
+
+STACK TÉCNICO
+-------------
+- Frontend: React + TypeScript + Vite
+- Editor de código: Monaco Editor (@monaco-editor/react)
+- Backend nativo: Tauri v2 (Rust)
+- Estado global: Zustand (con persistencia en localStorage)
+- Estilos: Tailwind CSS
+- Iconos: lucide-react
+- Fuente: JetBrains Mono
+
+===========================================================
+SISTEMA DE ARCHIVOS (BACKEND RUST)
+===========================================================
+
+Comandos Tauri disponibles (src-tauri/src/commands/file_ops.rs):
+  - read_file(path)           Leer contenido de un archivo
+  - write_file(path, content) Escribir/guardar un archivo en disco
+  - list_directory(path)      Listar contenido de un directorio
+  - get_file_info(path)       Obtener metadatos de un archivo
+  - create_file(path)         Crear un archivo vacío
+  - create_directory(path)    Crear un directorio (con padres)
+  - delete_path(path)         Eliminar archivo o directorio
+  - rename_path(old, new)     Renombrar/mover archivo o directorio
+  - get_home_dir()            Obtener directorio home del usuario
+  - path_exists(path)         Comprobar si existe una ruta
+
+Vigilancia de archivos (src-tauri/src/commands/file_watcher.rs):
+  - watch_file(path)          Iniciar vigilancia de un archivo
+  - unwatch_file(path)        Detener vigilancia de un archivo
+  - Emite evento "file-changed" al frontend al detectar cambios externos
+
+===========================================================
+EDITOR MONACO
+===========================================================
+
+- Tema personalizado "linuxpad-dark" (paleta slate/azul/verde):
+    Fondo: #0f172a (slate-950)
+    Texto: #e2e8f0
+    Comentarios, keywords, strings, numbers con colores propios
+
+- Configuración del editor:
+    Fuente: JetBrains Mono con ligaduras activadas
+    Tamaño de fuente ajustable (10–40 px)
+    Números de línea activados
+    Indentación con espacios (tabSize: 2)
+    Scroll suave
+    Cursor parpadeante
+    Colorización de pares de corchetes
+    Guías de indentación y pares de corchetes
+    Sin scroll más allá de la última línea
+    Renderizado de espacios en blanco en selección
+    Minimap desactivado
+
+- Zoom con Ctrl+Rueda del ratón (interceptado a nivel window/capture para
+  evitar que el WebView de Tauri haga zoom de página)
+
+- Guardado y restauración de posición del cursor por pestaña
+- Guardado y restauración de posición de scroll por pestaña
+
+===========================================================
+GESTIÓN DE PESTAÑAS
+===========================================================
+
+- Crear pestaña nueva (Ctrl+N / botón +)
+- Abrir archivo en pestaña (Ctrl+O)
+- Cerrar pestaña (Ctrl+W / botón × / clic con rueda)
+- Cambiar pestaña activa (clic / Ctrl+1–9 / Ctrl+Tab / Ctrl+Shift+Tab)
+- Indicador de archivo modificado (● antes del título)
+- Ancho máximo 200px con texto truncado
+- Si se cierra la última pestaña, se abre una en blanco automáticamente
+- Si hay solo una pestaña vacía y se abre un archivo, la sustituye
+
+===========================================================
+EXPLORADOR DE ARCHIVOS (SIDEBAR)
+===========================================================
+
+- Árbol de archivos y carpetas con expansión/colapso lazy-loading
+- Archivos ordenados: directorios primero, luego alfabético
+- Iconos diferenciados: carpeta abierta/cerrada, archivo
+- Profundidad visual con indentación (14px por nivel)
+- Botones de cabecera:
+    Nuevo archivo (prompts nombre)
+    Nueva carpeta (prompts nombre)
+    Ir al home
+    Refrescar (con spinner animado)
+- Breadcrumb con la ruta actual (~ en lugar de /home/usuario)
+- Eliminar archivo/carpeta (botón hover + confirmación)
+- Renombrar archivo/carpeta (clic derecho → menú contextual → Rename)
+- Menú contextual al clic derecho con opciones Rename y Delete
+- Si el archivo renombrado está abierto en una pestaña, el título
+  y la ruta de la pestaña se actualizan automáticamente
+- Toggle sidebar (Ctrl+B / botón en toolbar)
+- Persistencia de la ruta abierta entre sesiones
+
+===========================================================
+GUARDADO DE ARCHIVOS
+===========================================================
+
+- Guardar (Ctrl+S): guarda en la ruta actual del archivo
+- Guardar como (Ctrl+Shift+S): diálogo nativo del sistema para
+  elegir nueva ruta
+- Actualización automática del título de pestaña al guardar con nueva ruta
+- Detección automática del lenguaje al guardar por extensión
+
+===========================================================
+DETECCIÓN DE LENGUAJE
+===========================================================
+
+Detecta automáticamente el lenguaje por extensión al abrir/guardar:
+  TypeScript (ts, tsx), JavaScript (js, jsx, mjs, cjs), Rust (rs),
+  Python (py), Go (go), Java (java), C (c, h), C++ (cpp, cc, cxx, hpp),
+  C# (cs), Ruby (rb), PHP (php), Swift (swift), Kotlin (kt),
+  Shell (sh, bash, zsh), HTML (html, htm), CSS (css),
+  SCSS/Sass (scss, sass), Less (less), JSON (json), YAML (yaml, yml),
+  TOML (toml), XML (xml), Markdown (md), SQL (sql),
+  Dockerfile, Lua (lua), R (r), LaTeX (tex)
+
+===========================================================
+ATAJOS DE TECLADO
+===========================================================
+
+  Ctrl+N             Nueva pestaña
+  Ctrl+O             Abrir archivo
+  Ctrl+S             Guardar
+  Ctrl+Shift+S       Guardar como
+  Ctrl+W             Cerrar pestaña
+  Ctrl+B             Toggle sidebar
+  Ctrl+F             Abrir buscar/reemplazar
+  Ctrl+K / Ctrl+P    Abrir paleta de comandos
+  Ctrl+1..9          Ir a la pestaña N
+  Ctrl+Tab           Siguiente pestaña
+  Ctrl+Shift+Tab     Pestaña anterior
+  Ctrl+Rueda         Aumentar/disminuir tamaño de fuente del editor
+
+===========================================================
+BUSCAR Y REEMPLAZAR
+===========================================================
+
+- Panel deslizable desde abajo (Ctrl+F)
+- Campo de búsqueda con contador de coincidencias
+- Campo de reemplazo plegable
+- Opciones: distinguir mayúsculas, palabra completa, expresiones regulares
+- Botones: Reemplazar siguiente / Reemplazar todo
+- Construcción dinámica de regex con manejo de errores
+- Actualización debounced (120 ms) del contador de coincidencias
+
+===========================================================
+PALETA DE COMANDOS
+===========================================================
+
+- Acceso con Ctrl+K o Ctrl+P
+- Comandos disponibles:
+    Nueva pestaña, Abrir archivo, Guardar, Guardar como,
+    Cerrar pestaña, Toggle sidebar, Buscar y reemplazar
+- Lista de archivos abiertos en pestañas (con ruta como descripción)
+- Filtrado difuso por nombre o descripción
+- Navegación con flechas + Enter para ejecutar
+- Cierre con Escape
+
+===========================================================
+REGLAS DE COLOREADO PERSONALIZADO
+===========================================================
+
+- Definición de reglas trigger → color (hex/nombre)
+- Dos modos de trigger:
+    Doble delimitador: ||texto||  (colorea el texto entre delimitadores)
+    Línea completa:    |texto→    (colorea desde el trigger hasta fin de línea)
+- Activación/desactivación individual de reglas
+- Eliminación de reglas
+- Decoraciones dinámicas Monaco (máximo 600 para rendimiento)
+- CSS dinámico generado para cada regla activa
+
+===========================================================
+FORMATEADOR DE CÓDIGO
+===========================================================
+
+Formateado automático con detección de lenguaje:
+  JSON        → JSON.stringify con pretty-print
+  XML         → xml-formatter
+  YAML        → js-yaml
+  SQL         → sql-formatter
+  Markdown    → Regex-based (encabezados, líneas en blanco, espacios)
+
+- Detección automática del lenguaje del contenido (sniffLanguage):
+    Intento de parseo JSON
+    Detección XML (empieza con <)
+    Keywords SQL (SELECT, INSERT, UPDATE, DELETE, etc.)
+    Patrones YAML (---, key:, - items)
+- Aplicación del formato vía Monaco executeEdits (soporta deshacer)
+- Disponible desde la toolbar
+
+===========================================================
+VIGILANCIA DE ARCHIVOS EXTERNOS
+===========================================================
+
+- Detecta cambios realizados por otros programas sobre los archivos abiertos
+- Recarga automática del contenido desde disco al detectar modificación
+- Deja de vigilar al cerrar la pestaña
+- Implementado con la crate notify (Rust) + eventos Tauri al frontend
+
+===========================================================
+BARRA DE ESTADO (STATUS BAR)
+===========================================================
+
+- Posición del cursor: Línea X, Columna Y
+- Número total de líneas
+- Lenguaje detectado del archivo activo
+- Codificación (UTF-8)
+
+===========================================================
+PERSISTENCIA DE SESIÓN
+===========================================================
+
+Persiste en localStorage entre sesiones:
+  - Pestañas abiertas (contenido, ruta, posición cursor)
+  - Pestaña activa
+  - Word wrap activado/desactivado
+  - Tamaño de fuente del editor
+  - Estado del sidebar (abierto/cerrado)
+  - Ruta actual del sidebar
+  - Reglas de coloreado personalizado
+
+Al restaurar: relee los archivos desde disco si existen;
+si no existen, mantiene la pestaña con isDirty=true.
+
+===========================================================
+WORD WRAP
+===========================================================
+
+- Toggle word wrap desde toolbar
+- Persistido en sesión
+- Aplicado al editor Monaco en tiempo real
+
+===========================================================

@@ -10,6 +10,7 @@ export interface Tab {
   content: string;
   isDirty: boolean;
   language: string;
+  type: 'code' | 'diagram';
   cursorPosition: CursorPosition;
   encoding: string;
   scrollTop: number;
@@ -43,3 +44,11 @@ export type FindReplaceOptions = {
   wholeWord: boolean;
   useRegex: boolean;
 };
+
+export interface ColorRule {
+  id: string;
+  trigger: string;
+  color: string;
+  enabled: boolean;
+  createdAt: number;
+}
