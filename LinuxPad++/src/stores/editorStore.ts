@@ -1,7 +1,25 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
+import type { StateStorage } from "zustand/middleware";
 import { invoke } from "@tauri-apps/api/core";
 import type { Tab, CursorPosition, ColorRule } from "../types";
+import type { Language } from "../i18n/translations";
+import type { ChatConversation, AiConfig, ChatMessage, ContextItem } from '../types/chat';
+
+function makeDebouncedStorage(delay: number): StateStorage {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  return {
+    getItem: (key) => localStorage.getItem(key),
+    setItem: (key, value) => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        localStorage.setItem(key, value);
+        timer = null;
+      }, delay);
+    },
+    removeItem: (key) => localStorage.removeItem(key),
+  };
+}
 
 const LANGUAGE_MAP: Record<string, string> = {
   ts: "typescript", tsx: "typescript",
@@ -69,6 +87,8 @@ interface EditorStore {
   editorFontSize: number;
   sidebarOpen: boolean;
   sidebarPath: string;
+  sidebarHomePath: string;
+  language: Language;
   commandPaletteOpen: boolean;
   findReplaceOpen: boolean;
   colorRules: ColorRule[];
@@ -103,6 +123,8 @@ interface EditorStore {
   setSidebarOpen: (open: boolean) => void;
   toggleSidebar: () => void;
   setSidebarPath: (path: string) => void;
+  setSidebarHomePath: (path: string) => void;
+  setLanguage: (lang: Language) => void;
   toggleWordWrap: () => void;
   adjustEditorFontSize: (delta: number) => void;
   setCommandPaletteOpen: (open: boolean) => void;
@@ -111,6 +133,27 @@ interface EditorStore {
   removeColorRule: (id: string) => void;
   toggleColorRule: (id: string) => void;
   setDiagramSetting: (key: keyof EditorStore['diagramSettings'], value: boolean | number) => void;
+
+  // Chat / AI
+  chatPanelOpen: boolean;
+  chatPanelWidth: number;
+  chatConversations: ChatConversation[];
+  activeChatId: string | null;
+  aiConfig: AiConfig;
+  pendingChatInput: string | null;
+
+  toggleChatPanel: () => void;
+  setChatPanelOpen: (open: boolean) => void;
+  setChatPanelWidth: (w: number) => void;
+  newChatConversation: () => void;
+  setActiveChatId: (id: string) => void;
+  deleteChatConversation: (id: string) => void;
+  addChatMessage: (convId: string, msg: Omit<ChatMessage, 'id' | 'createdAt'>) => void;
+  addContextItem: (convId: string, item: Omit<ContextItem, 'id'>) => void;
+  removeContextItem: (convId: string, itemId: string) => void;
+  updateChatConversationTitle: (convId: string, title: string) => void;
+  setAiConfig: (patch: Partial<AiConfig>) => void;
+  setPendingChatInput: (text: string | null) => void;
 
   // Session restore
   restoreSession: () => Promise<void>;
@@ -127,9 +170,25 @@ export const useEditorStore = create<EditorStore>()(
       editorFontSize: 14,
       sidebarOpen: true,
       sidebarPath: "~",
+      sidebarHomePath: "~",
+      language: "es" as Language,
       commandPaletteOpen: false,
       findReplaceOpen: false,
       colorRules: [],
+      chatPanelOpen: false,
+      chatPanelWidth: 320,
+      chatConversations: [],
+      activeChatId: null,
+      aiConfig: {
+        provider: 'openai',
+        openaiApiKey: '',
+        openaiModel: 'gpt-4o',
+        anthropicApiKey: '',
+        anthropicModel: 'claude-sonnet-4-5',
+        deepseekApiKey: '',
+        deepseekModel: 'deepseek-chat',
+      },
+      pendingChatInput: null,
       diagramSettings: {
         showMiniMap: true,
         showControls: true,
@@ -199,45 +258,41 @@ export const useEditorStore = create<EditorStore>()(
           };
         }),
 
-      updateTabContent: (id, content) =>
-        set((s) => {
-          const tab = s.tabs.find((candidate) => candidate.id === id);
-          if (!tab || tab.content === content) return {};
+      updateTabContent: (id, content) => {
+        const tab = get().tabs.find((t) => t.id === id);
+        if (!tab || tab.content === content) return;
 
-          const wasDirty = tab.isDirty;
-          tab.content = content;
-          tab.isDirty = true;
+        const wasDirty = tab.isDirty;
+        tab.content = content;
+        tab.isDirty = true;
 
-          return wasDirty ? {} : { tabsMetaVersion: s.tabsMetaVersion + 1 };
-        }),
+        if (!wasDirty) {
+          set((s) => ({ tabsMetaVersion: s.tabsMetaVersion + 1 }));
+        }
+      },
 
       setTabContent: (id, content) =>
         set((s) => {
           const idx = s.tabs.findIndex((t) => t.id === id);
-          console.log("[setTabContent] id:", id, "idx:", idx);
-          if (idx === -1) { console.log("[setTabContent] abort: tab not found"); return {}; }
+          if (idx === -1) return {};
           const tab = s.tabs[idx];
-          console.log("[setTabContent] content same?", tab.content === content);
-          if (tab.content === content) { console.log("[setTabContent] abort: content unchanged"); return {}; }
+          if (tab.content === content) return {};
           const newTabs = [...s.tabs];
           newTabs[idx] = { ...tab, content, isDirty: true };
-          console.log("[setTabContent] returning new tabs, new metaVersion:", s.tabsMetaVersion + 1);
           return { tabs: newTabs, tabsMetaVersion: s.tabsMetaVersion + 1 };
         }),
 
-      updateTabCursor: (id, pos) =>
-        set((s) => {
-          const tab = s.tabs.find((candidate) => candidate.id === id);
-          if (!tab) return {};
+      updateTabCursor: (id, pos) => {
+        const s = get();
+        const tab = s.tabs.find((t) => t.id === id);
+        if (!tab) return;
 
-          tab.cursorPosition = pos;
+        tab.cursorPosition = pos;
 
-          if (s.activeTabId === id) {
-            return { activeCursorPosition: pos };
-          }
-
-          return {};
-        }),
+        if (s.activeTabId === id) {
+          set(() => ({ activeCursorPosition: pos }));
+        }
+      },
 
       updateTabScroll: (id, scrollTop) =>
         set((s) => {
@@ -357,6 +412,8 @@ export const useEditorStore = create<EditorStore>()(
       setSidebarOpen: (open) => set({ sidebarOpen: open }),
       toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
       setSidebarPath: (path) => set({ sidebarPath: path }),
+      setSidebarHomePath: (path) => set({ sidebarHomePath: path }),
+      setLanguage: (lang) => set({ language: lang }),
       toggleWordWrap: () => set((s) => ({ wordWrapEnabled: !s.wordWrapEnabled })),
       adjustEditorFontSize: (delta) =>
         set((s) => ({
@@ -390,6 +447,84 @@ export const useEditorStore = create<EditorStore>()(
       setDiagramSetting: (key, value) =>
         set((s) => ({ diagramSettings: { ...s.diagramSettings, [key]: value } })),
 
+      toggleChatPanel: () => set((s) => ({ chatPanelOpen: !s.chatPanelOpen })),
+      setChatPanelOpen: (open) => set({ chatPanelOpen: open }),
+      setChatPanelWidth: (w) => set({ chatPanelWidth: Math.max(240, Math.min(800, w)) }),
+
+      newChatConversation: () => {
+        const conv: ChatConversation = {
+          id: crypto.randomUUID(),
+          title: 'Conversación',
+          createdAt: Date.now(),
+          messages: [],
+          contextItems: [],
+        };
+        set((s) => {
+          const updated = [...s.chatConversations, conv].slice(-20);
+          return { chatConversations: updated, activeChatId: conv.id, chatPanelOpen: true };
+        });
+      },
+
+      setActiveChatId: (id) => set({ activeChatId: id }),
+
+      deleteChatConversation: (id) =>
+        set((s) => {
+          const updated = s.chatConversations.filter((c) => c.id !== id);
+          const nextActive = s.activeChatId === id
+            ? (updated[updated.length - 1]?.id ?? null)
+            : s.activeChatId;
+          return { chatConversations: updated, activeChatId: nextActive };
+        }),
+
+      addChatMessage: (convId, msg) =>
+        set((s) => {
+          const idx = s.chatConversations.findIndex((c) => c.id === convId);
+          if (idx === -1) return {};
+          const conv = s.chatConversations[idx];
+          const messages = conv.messages.length >= 100
+            ? [...conv.messages.slice(1), { id: crypto.randomUUID(), createdAt: Date.now(), ...msg }]
+            : [...conv.messages, { id: crypto.randomUUID(), createdAt: Date.now(), ...msg }];
+          const updated = [...s.chatConversations];
+          updated[idx] = { ...conv, messages };
+          return { chatConversations: updated };
+        }),
+
+      addContextItem: (convId, item) =>
+        set((s) => {
+          const idx = s.chatConversations.findIndex((c) => c.id === convId);
+          if (idx === -1) return {};
+          const conv = s.chatConversations[idx];
+          const newItem: ContextItem = { id: crypto.randomUUID(), ...item };
+          const updated = [...s.chatConversations];
+          updated[idx] = { ...conv, contextItems: [...conv.contextItems, newItem] };
+          return { chatConversations: updated };
+        }),
+
+      removeContextItem: (convId, itemId) =>
+        set((s) => {
+          const idx = s.chatConversations.findIndex((c) => c.id === convId);
+          if (idx === -1) return {};
+          const conv = s.chatConversations[idx];
+          const updated = [...s.chatConversations];
+          updated[idx] = { ...conv, contextItems: conv.contextItems.filter((i) => i.id !== itemId) };
+          return { chatConversations: updated };
+        }),
+
+      updateChatConversationTitle: (convId, title) =>
+        set((s) => {
+          const idx = s.chatConversations.findIndex((c) => c.id === convId);
+          if (idx === -1) return {};
+          const updated = [...s.chatConversations];
+          updated[idx] = { ...updated[idx], title };
+          return { chatConversations: updated };
+        }),
+
+      setAiConfig: (patch) =>
+        set((s) => ({ aiConfig: { ...s.aiConfig, ...patch } })),
+
+      setPendingChatInput: (text) =>
+        set(text !== null ? { pendingChatInput: text, chatPanelOpen: true } : { pendingChatInput: null }),
+
       restoreSession: async () => {
         const { tabs } = get();
         if (tabs.length === 0) {
@@ -421,16 +556,28 @@ export const useEditorStore = create<EditorStore>()(
     }),
     {
       name: "linuxpad-session",
-      storage: createJSONStorage(() => localStorage),
+      storage: createJSONStorage(() => makeDebouncedStorage(1000)),
       partialize: (s) => ({
-        tabs: s.tabs,
+        tabs: s.tabs.map((t) => ({
+          ...t,
+          content: t.path === null ? t.content : "",
+          cursorPosition: { line: 1, column: 1 },
+          scrollTop: 0,
+        })),
         activeTabId: s.activeTabId,
         wordWrapEnabled: s.wordWrapEnabled,
         editorFontSize: s.editorFontSize,
         sidebarOpen: s.sidebarOpen,
         sidebarPath: s.sidebarPath,
+        sidebarHomePath: s.sidebarHomePath,
+        language: s.language,
         colorRules: s.colorRules,
         diagramSettings: s.diagramSettings,
+        chatPanelOpen: s.chatPanelOpen,
+        chatPanelWidth: s.chatPanelWidth,
+        chatConversations: s.chatConversations,
+        activeChatId: s.activeChatId,
+        aiConfig: s.aiConfig,
       }),
     }
   )

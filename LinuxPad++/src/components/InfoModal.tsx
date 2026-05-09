@@ -1,37 +1,14 @@
 import { useEffect } from "react";
 import { X, Keyboard, Terminal, Info } from "lucide-react";
+import { useTranslation } from "../i18n";
 
 interface InfoModalProps {
   onClose: () => void;
 }
 
-const SHORTCUTS = [
-  { action: "Nuevo archivo",           keys: "Ctrl+N" },
-  { action: "Abrir archivo",           keys: "Ctrl+O" },
-  { action: "Guardar",                 keys: "Ctrl+S" },
-  { action: "Guardar como",            keys: "Ctrl+Shift+S" },
-  { action: "Cerrar pestaña",          keys: "Ctrl+W" },
-  { action: "Buscar y reemplazar",     keys: "Ctrl+F" },
-  { action: "Paleta de comandos",      keys: "Ctrl+K" },
-  { action: "Mostrar/ocultar sidebar", keys: "Ctrl+B" },
-  { action: "Cambiar a pestaña 1–9",  keys: "Ctrl+1…9" },
-  { action: "Pestaña siguiente",       keys: "Ctrl+Tab" },
-  { action: "Pestaña anterior",        keys: "Ctrl+Shift+Tab" },
-];
-
-const COMMANDS = [
-  "Nuevo archivo — abre una pestaña en blanco",
-  "Abrir archivo — selector de archivos del sistema",
-  "Guardar / Guardar como — escribe en disco",
-  "Cerrar pestaña — cierra la pestaña activa",
-  "Buscar y reemplazar — panel integrado en el editor",
-  "Paleta de comandos — acceso rápido a todas las acciones",
-  "Mostrar/ocultar sidebar — explorador de archivos",
-  "Ajuste de línea — activa/desactiva el word wrap",
-  "Reglas de color — resaltado personalizado por trigger",
-];
-
 export default function InfoModal({ onClose }: InfoModalProps) {
+  const t = useTranslation();
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -55,13 +32,13 @@ export default function InfoModal({ onClose }: InfoModalProps) {
           <span className="flex-1 text-sm font-semibold text-slate-200">
             LinuxPad<span className="text-slate-400">++</span>
             <span className="ml-2 text-xs font-normal text-slate-500">
-              Editor de texto para Linux
+              {t.infoModal.subtitle}
             </span>
           </span>
           <button
             onClick={onClose}
             className="text-slate-500 hover:text-slate-200 transition-colors"
-            title="Cerrar"
+            title={t.infoModal.close}
           >
             <X size={16} />
           </button>
@@ -73,12 +50,12 @@ export default function InfoModal({ onClose }: InfoModalProps) {
             <div className="flex items-center gap-1.5 mb-2">
               <Keyboard size={13} className="text-slate-400" />
               <span className="text-xs font-semibold text-slate-300 uppercase tracking-wide">
-                Atajos de teclado
+                {t.infoModal.shortcuts}
               </span>
             </div>
             <table className="w-full text-xs">
               <tbody>
-                {SHORTCUTS.map(({ action, keys }) => (
+                {t.infoModal.shortcutList.map(({ action, keys }) => (
                   <tr key={keys} className="border-b border-surface-700/50 last:border-0">
                     <td className="py-1.5 pr-4 text-slate-300">{action}</td>
                     <td className="py-1.5 text-right">
@@ -97,11 +74,11 @@ export default function InfoModal({ onClose }: InfoModalProps) {
             <div className="flex items-center gap-1.5 mb-2 mt-1">
               <Terminal size={13} className="text-slate-400" />
               <span className="text-xs font-semibold text-slate-300 uppercase tracking-wide">
-                Comandos disponibles
+                {t.infoModal.commands}
               </span>
             </div>
             <ul className="space-y-1">
-              {COMMANDS.map((cmd) => (
+              {t.infoModal.commandList.map((cmd) => (
                 <li key={cmd} className="flex items-start gap-2 text-xs text-slate-400">
                   <span className="mt-1 w-1 h-1 rounded-full bg-slate-600 shrink-0" />
                   {cmd}

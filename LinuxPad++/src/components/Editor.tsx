@@ -2,6 +2,7 @@ import { useRef, useCallback, useEffect } from "react";
 import MonacoEditor, { type OnMount, type OnChange } from "@monaco-editor/react";
 import type * as monaco from "monaco-editor";
 import { useEditorStore } from "../stores/editorStore";
+import { useTranslation } from "../i18n";
 import type { ColorRule } from "../types";
 import { editorBridge } from "../utils/editorBridge";
 
@@ -205,6 +206,7 @@ const LINUXPAD_THEME: monaco.editor.IStandaloneThemeData = {
 };
 
 export default function Editor() {
+  const t = useTranslation();
   const activeTabId = useEditorStore((s) => s.activeTabId);
   const tab = useEditorStore((s) => s.tabs.find((candidate) => candidate.id === s.activeTabId) ?? null);
   const wordWrapEnabled = useEditorStore((s) => s.wordWrapEnabled);
@@ -214,14 +216,16 @@ export default function Editor() {
   const updateTabCursor = useEditorStore((s) => s.updateTabCursor);
   const updateTabScroll = useEditorStore((s) => s.updateTabScroll);
   const colorRules = useEditorStore((s) => s.colorRules);
+  const setPendingChatInput = useEditorStore((s) => s.setPendingChatInput);
 
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const prevTabIdRef = useRef<string | null>(null);
   const activeTabIdRef = useRef<string | null>(activeTabId);
   const decorationsRef = useRef<string[]>([]);
   const contentListenerRef = useRef<monaco.IDisposable | null>(null);
-  const rafRef = useRef<number | null>(null);
+  const colorDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const colorRulesRef = useRef(colorRules);
+  const setPendingChatInputRef = useRef(setPendingChatInput);
 
   useEffect(() => {
     activeTabIdRef.current = activeTabId;
@@ -230,6 +234,10 @@ export default function Editor() {
   useEffect(() => {
     colorRulesRef.current = colorRules;
   }, [colorRules]);
+
+  useEffect(() => {
+    setPendingChatInputRef.current = setPendingChatInput;
+  }, [setPendingChatInput]);
 
   const applyColorDecorations = useCallback(() => {
     const editor = editorRef.current;
@@ -268,14 +276,23 @@ export default function Editor() {
   }, []);
 
   const scheduleApplyColorDecorations = useCallback(() => {
-    if (rafRef.current !== null) {
-      cancelAnimationFrame(rafRef.current);
+    const hasActiveRules = colorRulesRef.current.some(
+      (r) => r.enabled && r.trigger.length > 0
+    );
+    if (!hasActiveRules) {
+      if (decorationsRef.current.length > 0 && editorRef.current) {
+        decorationsRef.current = editorRef.current.deltaDecorations(
+          decorationsRef.current,
+          []
+        );
+      }
+      return;
     }
-
-    rafRef.current = requestAnimationFrame(() => {
+    if (colorDebounceRef.current !== null) clearTimeout(colorDebounceRef.current);
+    colorDebounceRef.current = setTimeout(() => {
       applyColorDecorations();
-      rafRef.current = null;
-    });
+      colorDebounceRef.current = null;
+    }, 200);
   }, [applyColorDecorations]);
 
   // Ctrl+Wheel zoom — capture at window level so it fires before WebView native zoom
@@ -347,13 +364,27 @@ export default function Editor() {
         editor.pushUndoStop();
       };
 
+      editor.addAction({
+        id: 'linuxpad.sendToChat',
+        label: 'Send selection to chat',
+        precondition: 'editorHasSelection',
+        contextMenuGroupId: 'navigation',
+        contextMenuOrder: 1.5,
+        run: (ed) => {
+          const selection = ed.getSelection();
+          if (!selection) return;
+          const text = ed.getModel()?.getValueInRange(selection);
+          if (text) setPendingChatInputRef.current(text);
+        },
+      });
+
       editor.onDidDispose(() => {
         editorBridge.applyContent = null;
         contentListenerRef.current?.dispose();
         contentListenerRef.current = null;
-        if (rafRef.current !== null) {
-          cancelAnimationFrame(rafRef.current);
-          rafRef.current = null;
+        if (colorDebounceRef.current !== null) {
+          clearTimeout(colorDebounceRef.current);
+          colorDebounceRef.current = null;
         }
       });
       editor.focus();
@@ -365,10 +396,9 @@ export default function Editor() {
     (value) => {
       if (activeTabId && value !== undefined) {
         updateTabContent(activeTabId, value);
-        scheduleApplyColorDecorations();
       }
     },
-    [activeTabId, scheduleApplyColorDecorations, updateTabContent]
+    [activeTabId, updateTabContent]
   );
 
   useEffect(() => {
@@ -403,8 +433,8 @@ export default function Editor() {
   useEffect(
     () => () => {
       contentListenerRef.current?.dispose();
-      if (rafRef.current !== null) {
-        cancelAnimationFrame(rafRef.current);
+      if (colorDebounceRef.current !== null) {
+        clearTimeout(colorDebounceRef.current);
       }
     },
     []
@@ -413,7 +443,7 @@ export default function Editor() {
   if (!tab) {
     return (
       <div className="flex-1 flex items-center justify-center bg-surface-900 text-slate-600 select-none">
-        <p className="text-sm">No file open — Ctrl+N for new tab, Ctrl+O to open</p>
+        <p className="text-sm">{t.editor.noFileOpen}</p>
       </div>
     );
   }

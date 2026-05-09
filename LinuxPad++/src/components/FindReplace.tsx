@@ -1,12 +1,14 @@
 import React, { useState, useRef, useEffect } from "react";
 import { X, ChevronDown, ChevronRight, CaseSensitive, WholeWord, Regex } from "lucide-react";
 import { useEditorStore } from "../stores/editorStore";
+import { useTranslation } from "../i18n";
 
 interface FindReplaceProps {
   onClose: () => void;
 }
 
 export default function FindReplace({ onClose }: FindReplaceProps) {
+  const t = useTranslation();
   const activeTabId = useEditorStore((s) => s.activeTabId);
   const updateTabContent = useEditorStore((s) => s.updateTabContent);
   const tab = useEditorStore((s) => s.tabs.find((candidate) => candidate.id === s.activeTabId) ?? null);
@@ -36,7 +38,7 @@ export default function FindReplace({ onClose }: FindReplaceProps) {
       setError("");
       return rx;
     } catch (e) {
-      setError("Invalid regex");
+      setError("invalid");
       return null;
     }
   };
@@ -114,7 +116,7 @@ export default function FindReplace({ onClose }: FindReplaceProps) {
         <button
           onClick={() => setShowReplace(!showReplace)}
           className="mt-1.5 text-slate-500 hover:text-slate-200 transition-colors"
-          title="Toggle replace"
+          title={t.findReplace.toggleReplace}
         >
           {showReplace ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </button>
@@ -133,17 +135,17 @@ export default function FindReplace({ onClose }: FindReplaceProps) {
                     if (showReplace) handleReplaceNext();
                   }
                 }}
-                placeholder="Find…"
+                placeholder={t.findReplace.findPlaceholder}
                 className="w-full bg-surface-900 border border-surface-600 focus:border-blue-500 rounded px-2.5 py-1 text-sm text-slate-200 outline-none pr-16"
               />
               <div className="absolute right-1 top-1/2 -translate-y-1/2 flex gap-0.5">
-                <ToggleBtn active={caseSensitive} onClick={() => setCaseSensitive(!caseSensitive)} title="Case sensitive">
+                <ToggleBtn active={caseSensitive} onClick={() => setCaseSensitive(!caseSensitive)} title={t.findReplace.caseSensitive}>
                   <CaseSensitive size={13} />
                 </ToggleBtn>
-                <ToggleBtn active={wholeWord} onClick={() => setWholeWord(!wholeWord)} title="Whole word">
+                <ToggleBtn active={wholeWord} onClick={() => setWholeWord(!wholeWord)} title={t.findReplace.wholeWord}>
                   <WholeWord size={13} />
                 </ToggleBtn>
-                <ToggleBtn active={useRegex} onClick={() => setUseRegex(!useRegex)} title="Use regex">
+                <ToggleBtn active={useRegex} onClick={() => setUseRegex(!useRegex)} title={t.findReplace.useRegex}>
                   <Regex size={13} />
                 </ToggleBtn>
               </div>
@@ -151,9 +153,9 @@ export default function FindReplace({ onClose }: FindReplaceProps) {
 
             <span className="text-xs text-slate-500 whitespace-nowrap min-w-[60px]">
               {error ? (
-                <span className="text-red-400">{error}</span>
+                <span className="text-red-400">{t.findReplace.invalidRegex}</span>
               ) : query ? (
-                `${matchCount} match${matchCount !== 1 ? "es" : ""}`
+                t.findReplace.matches(matchCount)
               ) : ""}
             </span>
           </div>
@@ -164,7 +166,7 @@ export default function FindReplace({ onClose }: FindReplaceProps) {
               <input
                 value={replacement}
                 onChange={(e) => setReplacement(e.target.value)}
-                placeholder="Replace with…"
+                placeholder={t.findReplace.replacePlaceholder}
                 className="flex-1 bg-surface-900 border border-surface-600 focus:border-blue-500 rounded px-2.5 py-1 text-sm text-slate-200 outline-none"
               />
               <button
@@ -172,14 +174,14 @@ export default function FindReplace({ onClose }: FindReplaceProps) {
                 disabled={!query || matchCount === 0}
                 className="px-2.5 py-1 text-xs bg-surface-700 hover:bg-surface-600 disabled:opacity-40 rounded text-slate-200 transition-colors whitespace-nowrap"
               >
-                Replace
+                {t.findReplace.replace}
               </button>
               <button
                 onClick={handleReplaceAll}
                 disabled={!query || matchCount === 0}
                 className="px-2.5 py-1 text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded text-white transition-colors whitespace-nowrap"
               >
-                Replace All
+                {t.findReplace.replaceAll}
               </button>
             </div>
           )}

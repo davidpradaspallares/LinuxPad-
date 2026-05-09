@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useReactFlow } from '@xyflow/react';
 import type { Node, Edge } from '@xyflow/react';
 import type { DiagramNodeData } from './types';
+import { useTranslation } from '../i18n';
 
 interface Props {
   node: Node<DiagramNodeData> | null;
@@ -10,6 +11,7 @@ interface Props {
 
 export default function PropertiesPanel({ node, edge }: Props) {
   const { updateNodeData, setEdges } = useReactFlow();
+  const t = useTranslation();
 
   // Node fields
   const [label, setLabel] = useState('');
@@ -68,7 +70,7 @@ export default function PropertiesPanel({ node, edge }: Props) {
     return (
       <div style={emptyStyle}>
         <span style={{ color: '#475569', fontSize: 12, textAlign: 'center' }}>
-          Selecciona un nodo o conector para editar sus propiedades
+          {t.properties.empty}
         </span>
       </div>
     );
@@ -82,10 +84,10 @@ export default function PropertiesPanel({ node, edge }: Props) {
 
     return (
       <div style={panelStyle}>
-        <span style={headerStyle}>Conector</span>
+        <span style={headerStyle}>{t.properties.connector}</span>
 
         <div style={rowStyle}>
-          <label style={labelStyle}>Etiqueta</label>
+          <label style={labelStyle}>{t.properties.label}</label>
           <input
             style={inputStyle}
             value={edgeLabel}
@@ -94,19 +96,19 @@ export default function PropertiesPanel({ node, edge }: Props) {
             onKeyDown={e => {
               if (e.key === 'Enter') applyEdgeLabel();
             }}
-            placeholder="Sin etiqueta"
+            placeholder={t.properties.noLabel}
           />
         </div>
 
         <div style={{ marginTop: 'auto', paddingTop: 8, borderTop: '1px solid #1e293b' }}>
           <div style={{ fontSize: 10, color: '#475569' }}>
             <div>ID: {edge.id}</div>
-            <div style={{ marginTop: 2 }}>Tipo: {edge.type ?? 'default'}</div>
-            <div style={{ marginTop: 2 }}>De: {edge.source}</div>
-            <div style={{ marginTop: 2 }}>A: {edge.target}</div>
+            <div style={{ marginTop: 2 }}>{t.properties.type}: {edge.type ?? 'default'}</div>
+            <div style={{ marginTop: 2 }}>{t.properties.from}: {edge.source}</div>
+            <div style={{ marginTop: 2 }}>{t.properties.to}: {edge.target}</div>
           </div>
           <div style={{ marginTop: 8, fontSize: 10, color: '#334155' }}>
-            Doble clic sobre el conector para editar inline
+            {t.properties.editInline}
           </div>
         </div>
       </div>
@@ -121,10 +123,10 @@ export default function PropertiesPanel({ node, edge }: Props) {
 
   return (
     <div style={panelStyle}>
-      <span style={headerStyle}>Propiedades</span>
+      <span style={headerStyle}>{t.properties.title}</span>
 
       <div style={rowStyle}>
-        <label style={labelStyle}>Etiqueta</label>
+        <label style={labelStyle}>{t.properties.label}</label>
         <input
           style={inputStyle}
           value={label}
@@ -135,7 +137,7 @@ export default function PropertiesPanel({ node, edge }: Props) {
       </div>
 
       <div style={rowStyle}>
-        <label style={labelStyle}>Color</label>
+        <label style={labelStyle}>{t.properties.color}</label>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           <input
             type="color"
@@ -153,7 +155,7 @@ export default function PropertiesPanel({ node, edge }: Props) {
       </div>
 
       <div style={rowStyle}>
-        <label style={labelStyle}>Descripción</label>
+        <label style={labelStyle}>{t.properties.description}</label>
         <textarea
           style={{ ...inputStyle, resize: 'vertical', minHeight: 64 }}
           value={description}
@@ -165,7 +167,7 @@ export default function PropertiesPanel({ node, edge }: Props) {
       <div style={{ marginTop: 'auto', paddingTop: 8, borderTop: '1px solid #1e293b' }}>
         <div style={{ fontSize: 10, color: '#475569' }}>
           <div>ID: {node!.id}</div>
-          <div style={{ marginTop: 2 }}>Tipo: {node!.type}</div>
+          <div style={{ marginTop: 2 }}>{t.properties.type}: {node!.type}</div>
         </div>
       </div>
     </div>

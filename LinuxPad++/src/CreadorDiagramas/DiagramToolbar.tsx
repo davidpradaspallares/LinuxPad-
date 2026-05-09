@@ -1,22 +1,23 @@
 import type { DiagramNodeType } from './types';
 import { NODE_DEFAULTS } from './types';
+import { useTranslation } from '../i18n';
 
 interface Props {
   onAddNode: (type: DiagramNodeType) => void;
 }
 
-type NodeEntry = { type: DiagramNodeType; label: string; shape: React.ReactNode };
-type Category = { label: string; items: NodeEntry[] };
+type CatKey = 'catBasics' | 'catData' | 'catConnectors' | 'catOperations';
+type NodeEntry = { type: DiagramNodeType; shape: React.ReactNode };
+type Category = { catKey: CatKey; items: NodeEntry[] };
 
 const c = (t: DiagramNodeType) => NODE_DEFAULTS[t].color;
 
 const CATEGORIES: Category[] = [
   {
-    label: 'Básicos',
+    catKey: 'catBasics',
     items: [
       {
         type: 'startend',
-        label: 'Inicio/Fin',
         shape: (
           <div style={{ width: 68, height: 20, borderRadius: 999, background: c('startend'), border: '2px solid rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <span style={{ color: '#fff', fontSize: 8, fontWeight: 700 }}>START</span>
@@ -25,14 +26,12 @@ const CATEGORIES: Category[] = [
       },
       {
         type: 'process',
-        label: 'Proceso',
         shape: (
           <div style={{ width: 68, height: 24, borderRadius: 4, background: c('process'), border: '2px solid rgba(255,255,255,0.2)' }} />
         ),
       },
       {
         type: 'decision',
-        label: 'Decisión',
         shape: (
           <svg width={68} height={36} style={{ display: 'block' }}>
             <polygon points="34,2 66,18 34,34 2,18" fill={c('decision')} stroke="rgba(255,255,255,0.2)" strokeWidth={2} />
@@ -41,7 +40,6 @@ const CATEGORIES: Category[] = [
       },
       {
         type: 'io',
-        label: 'E / S',
         shape: (
           <svg width={68} height={26} style={{ display: 'block' }}>
             <polygon points="10,1 68,1 58,25 0,25" fill={c('io')} stroke="rgba(255,255,255,0.2)" strokeWidth={2} />
@@ -50,7 +48,6 @@ const CATEGORIES: Category[] = [
       },
       {
         type: 'subprocess',
-        label: 'Subproceso',
         shape: (
           <div style={{ width: 68, height: 24, borderRadius: 4, background: c('subprocess'), border: '2px solid rgba(255,255,255,0.2)', position: 'relative' }}>
             <div style={{ position: 'absolute', left: 7, top: 2, bottom: 2, width: 2, background: 'rgba(255,255,255,0.4)' }} />
@@ -60,7 +57,6 @@ const CATEGORIES: Category[] = [
       },
       {
         type: 'preparation',
-        label: 'Preparación',
         shape: (
           <svg width={68} height={26} style={{ display: 'block' }}>
             <polygon points="14,1 54,1 67,13 54,25 14,25 1,13" fill={c('preparation')} stroke="rgba(255,255,255,0.2)" strokeWidth={2} />
@@ -70,11 +66,10 @@ const CATEGORIES: Category[] = [
     ],
   },
   {
-    label: 'Datos',
+    catKey: 'catData',
     items: [
       {
         type: 'database',
-        label: 'Base de Datos',
         shape: (
           <svg width={52} height={38} style={{ display: 'block' }}>
             <line x1={2} y1={9} x2={2} y2={29} stroke="rgba(255,255,255,0.2)" strokeWidth={2} />
@@ -87,7 +82,6 @@ const CATEGORIES: Category[] = [
       },
       {
         type: 'document',
-        label: 'Documento',
         shape: (
           <svg width={68} height={32} style={{ display: 'block' }}>
             <path d="M 2,2 L 66,2 L 66,20 Q 34,34 2,20 Z" fill={c('document')} stroke="rgba(255,255,255,0.2)" strokeWidth={2} />
@@ -96,7 +90,6 @@ const CATEGORIES: Category[] = [
       },
       {
         type: 'multidocument',
-        label: 'Multidoc.',
         shape: (
           <svg width={68} height={36} style={{ display: 'block' }}>
             <path d="M 12,2 L 66,2 L 66,22 Q 38,30 12,22 Z" fill={c('multidocument')} fillOpacity={0.4} stroke="rgba(255,255,255,0.2)" strokeWidth={1.5} />
@@ -107,7 +100,6 @@ const CATEGORIES: Category[] = [
       },
       {
         type: 'internal_storage',
-        label: 'Alm. Interno',
         shape: (
           <svg width={68} height={28} style={{ display: 'block' }}>
             <rect x={2} y={2} width={64} height={24} fill={c('internal_storage')} stroke="rgba(255,255,255,0.2)" strokeWidth={2} rx={2} />
@@ -118,7 +110,6 @@ const CATEGORIES: Category[] = [
       },
       {
         type: 'manual_input',
-        label: 'E. Manual',
         shape: (
           <svg width={68} height={26} style={{ display: 'block' }}>
             <polygon points="1,1 67,8 67,25 1,25" fill={c('manual_input')} stroke="rgba(255,255,255,0.2)" strokeWidth={2} />
@@ -127,7 +118,6 @@ const CATEGORIES: Category[] = [
       },
       {
         type: 'sequential_data',
-        label: 'D. Secuencial',
         shape: (
           <svg width={30} height={30} style={{ display: 'block' }}>
             <circle cx={15} cy={15} r={13} fill={c('sequential_data')} stroke="rgba(255,255,255,0.2)" strokeWidth={2} />
@@ -138,11 +128,10 @@ const CATEGORIES: Category[] = [
     ],
   },
   {
-    label: 'Conectores',
+    catKey: 'catConnectors',
     items: [
       {
         type: 'page_connector',
-        label: 'Conn. Página',
         shape: (
           <svg width={30} height={30} style={{ display: 'block' }}>
             <circle cx={15} cy={15} r={13} fill={c('page_connector')} stroke="rgba(255,255,255,0.2)" strokeWidth={2} />
@@ -151,7 +140,6 @@ const CATEGORIES: Category[] = [
       },
       {
         type: 'offpage_connector',
-        label: 'Fuera Página',
         shape: (
           <svg width={38} height={34} style={{ display: 'block' }}>
             <polygon points="2,2 36,2 36,22 19,32 2,22" fill={c('offpage_connector')} stroke="rgba(255,255,255,0.2)" strokeWidth={2} />
@@ -160,7 +148,6 @@ const CATEGORIES: Category[] = [
       },
       {
         type: 'annotation',
-        label: 'Anotación',
         shape: (
           <svg width={68} height={28} style={{ display: 'block' }}>
             <rect x={2} y={2} width={56} height={24} fill={c('annotation')} fillOpacity={0.5} rx={3} />
@@ -172,7 +159,6 @@ const CATEGORIES: Category[] = [
       },
       {
         type: 'swimlane',
-        label: 'Swimlane',
         shape: (
           <div style={{ width: 68, height: 34, border: '2px solid rgba(255,255,255,0.2)', borderRadius: 4, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
             <div style={{ background: c('swimlane'), height: 11, flexShrink: 0, borderBottom: '1px solid rgba(255,255,255,0.15)' }} />
@@ -182,7 +168,6 @@ const CATEGORIES: Category[] = [
       },
       {
         type: 'summing_junction',
-        label: 'Unión',
         shape: (
           <svg width={30} height={30} style={{ display: 'block' }}>
             <circle cx={15} cy={15} r={13} fill={c('summing_junction')} stroke="rgba(255,255,255,0.2)" strokeWidth={2} />
@@ -194,11 +179,10 @@ const CATEGORIES: Category[] = [
     ],
   },
   {
-    label: 'Operaciones',
+    catKey: 'catOperations',
     items: [
       {
         type: 'manual_operation',
-        label: 'Op. Manual',
         shape: (
           <svg width={68} height={26} style={{ display: 'block' }}>
             <polygon points="1,1 67,1 54,25 14,25" fill={c('manual_operation')} stroke="rgba(255,255,255,0.2)" strokeWidth={2} />
@@ -207,7 +191,6 @@ const CATEGORIES: Category[] = [
       },
       {
         type: 'delay',
-        label: 'Retraso',
         shape: (
           <svg width={68} height={26} style={{ display: 'block' }}>
             <path d="M 2,2 L 55,2 A 11,11 0 0,1 55,24 L 2,24 Z" fill={c('delay')} stroke="rgba(255,255,255,0.2)" strokeWidth={2} />
@@ -216,7 +199,6 @@ const CATEGORIES: Category[] = [
       },
       {
         type: 'display',
-        label: 'Display',
         shape: (
           <svg width={68} height={26} style={{ display: 'block' }}>
             <path d="M 14,2 L 52,2 L 66,13 L 52,24 L 14,24 A 12,11 0 0,1 14,2 Z" fill={c('display')} stroke="rgba(255,255,255,0.2)" strokeWidth={2} />
@@ -225,7 +207,6 @@ const CATEGORIES: Category[] = [
       },
       {
         type: 'reference',
-        label: 'Referencia',
         shape: (
           <svg width={34} height={28} style={{ display: 'block' }}>
             <polygon points="2,2 32,14 2,26" fill={c('reference')} stroke="rgba(255,255,255,0.2)" strokeWidth={2} />
@@ -234,7 +215,6 @@ const CATEGORIES: Category[] = [
       },
       {
         type: 'direct_access_storage',
-        label: 'Acc. Directo',
         shape: (
           <svg width={68} height={28} style={{ display: 'block' }}>
             <rect x={14} y={2} width={40} height={24} fill={c('direct_access_storage')} />
@@ -251,6 +231,8 @@ const CATEGORIES: Category[] = [
 ];
 
 export default function DiagramToolbar({ onAddNode }: Props) {
+  const t = useTranslation();
+
   const handleDragStart = (e: React.DragEvent, type: DiagramNodeType) => {
     e.dataTransfer.setData('application/reactflow-nodetype', type);
     e.dataTransfer.effectAllowed = 'move';
@@ -268,8 +250,8 @@ export default function DiagramToolbar({ onAddNode }: Props) {
       gap: 2,
       overflowY: 'auto',
     }}>
-      {CATEGORIES.map(({ label, items }) => (
-        <div key={label}>
+      {CATEGORIES.map(({ catKey, items }) => (
+        <div key={catKey}>
           <span style={{
             fontSize: 9,
             color: '#475569',
@@ -281,13 +263,13 @@ export default function DiagramToolbar({ onAddNode }: Props) {
             marginTop: 6,
             marginBottom: 2,
           }}>
-            {label}
+            {t.diagram[catKey]}
           </span>
 
-          {items.map(({ type, label: nodeLabel, shape }) => (
+          {items.map(({ type, shape }) => (
             <button
               key={type}
-              title={`Arrastrar o clic: ${NODE_DEFAULTS[type].label}`}
+              title={t.diagram.dragOrClick(t.diagram.nodeTypes[type])}
               draggable
               onDragStart={e => handleDragStart(e, type)}
               onClick={() => onAddNode(type)}
@@ -308,7 +290,7 @@ export default function DiagramToolbar({ onAddNode }: Props) {
               onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
             >
               {shape}
-              <span style={{ color: '#94a3b8', fontSize: 9, textAlign: 'center', lineHeight: 1.2 }}>{nodeLabel}</span>
+              <span style={{ color: '#94a3b8', fontSize: 9, textAlign: 'center', lineHeight: 1.2 }}>{t.diagram.nodeTypes[type]}</span>
             </button>
           ))}
         </div>

@@ -51,6 +51,7 @@ import DiagramToolbar from './DiagramToolbar';
 import PropertiesPanel from './PropertiesPanel';
 import { exportToPng, exportToSvgFile, exportToMermaid, exportToCode } from './exporters';
 import { useEditorStore } from '../stores/editorStore';
+import { useTranslation } from '../i18n';
 import type { DiagramNodeType, DiagramNodeData, ExportCodeLang } from './types';
 import { NODE_DEFAULTS } from './types';
 
@@ -85,21 +86,21 @@ const EDGE_TYPES: EdgeTypes = {
   smoothstep: LabeledEdge,
 };
 
-const PICKER_GROUPS: { label: string; types: DiagramNodeType[] }[] = [
+const PICKER_GROUPS: { catKey: 'catBasics' | 'catData' | 'catConnectors' | 'catOperations'; types: DiagramNodeType[] }[] = [
   {
-    label: 'Básicos',
+    catKey: 'catBasics',
     types: ['startend', 'process', 'decision', 'io', 'subprocess', 'preparation'],
   },
   {
-    label: 'Datos',
+    catKey: 'catData',
     types: ['database', 'document', 'multidocument', 'internal_storage', 'manual_input', 'sequential_data'],
   },
   {
-    label: 'Conectores',
+    catKey: 'catConnectors',
     types: ['page_connector', 'offpage_connector', 'annotation', 'swimlane', 'summing_junction'],
   },
   {
-    label: 'Operaciones',
+    catKey: 'catOperations',
     types: ['manual_operation', 'delay', 'display', 'reference', 'direct_access_storage'],
   },
 ];
@@ -230,6 +231,7 @@ interface InnerProps {
 }
 
 function DiagramInner({ tabId, initialContent }: InnerProps) {
+  const t = useTranslation();
   const { fitView, screenToFlowPosition, getViewport } = useReactFlow();
   const updateTabContent = useEditorStore(s => s.updateTabContent);
   const diagramSettings = useEditorStore(s => s.diagramSettings);
@@ -274,7 +276,7 @@ function DiagramInner({ tabId, initialContent }: InnerProps) {
     if (isUndoRedo.current) return;
     if (historyTimer.current) clearTimeout(historyTimer.current);
     historyTimer.current = window.setTimeout(() => {
-      past.current = [...past.current.slice(-49), { nodes: JSON.parse(JSON.stringify(ns)), edges: JSON.parse(JSON.stringify(es)) }];
+      past.current = [...past.current.slice(-49), { nodes: structuredClone(ns), edges: structuredClone(es) }];
       future.current = [];
     }, 400);
   }, []);
@@ -283,7 +285,7 @@ function DiagramInner({ tabId, initialContent }: InnerProps) {
     if (past.current.length === 0) return;
     isUndoRedo.current = true;
     const snapshot = past.current.pop()!;
-    future.current = [{ nodes: JSON.parse(JSON.stringify(nodes)), edges: JSON.parse(JSON.stringify(edges)) }, ...future.current.slice(0, 49)];
+    future.current = [{ nodes: structuredClone(nodes), edges: structuredClone(edges) }, ...future.current.slice(0, 49)];
     setNodes(snapshot.nodes);
     setEdges(snapshot.edges);
     setTimeout(() => { isUndoRedo.current = false; }, 50);
@@ -293,7 +295,7 @@ function DiagramInner({ tabId, initialContent }: InnerProps) {
     if (future.current.length === 0) return;
     isUndoRedo.current = true;
     const snapshot = future.current.shift()!;
-    past.current = [...past.current.slice(-49), { nodes: JSON.parse(JSON.stringify(nodes)), edges: JSON.parse(JSON.stringify(edges)) }];
+    past.current = [...past.current.slice(-49), { nodes: structuredClone(nodes), edges: structuredClone(edges) }];
     setNodes(snapshot.nodes);
     setEdges(snapshot.edges);
     setTimeout(() => { isUndoRedo.current = false; }, 50);
@@ -508,16 +510,16 @@ function DiagramInner({ tabId, initialContent }: InnerProps) {
   const iconBtnActive: React.CSSProperties = { ...iconBtnStyle, color: '#e2e8f0', background: '#334155' };
 
   const alignActions: { label: string; title: string; dir: AlignDir; min: number }[] = [
-    { label: '⇤', title: 'Alinear izquierda (Ctrl+Shift+L)', dir: 'left', min: 2 },
-    { label: '⇥', title: 'Alinear derecha (Ctrl+Shift+R)', dir: 'right', min: 2 },
-    { label: '↑', title: 'Alinear arriba (Ctrl+Shift+T)', dir: 'top', min: 2 },
-    { label: '↓', title: 'Alinear abajo (Ctrl+Shift+B)', dir: 'bottom', min: 2 },
-    { label: '↔', title: 'Centrar horizontal (Ctrl+Shift+H)', dir: 'centerH', min: 2 },
-    { label: '↕', title: 'Centrar vertical (Ctrl+Shift+V)', dir: 'centerV', min: 2 },
-    { label: '⇔H', title: 'Distribuir horizontal (Ctrl+Shift+D)', dir: 'distributeH', min: 3 },
-    { label: '⇕V', title: 'Distribuir vertical (Ctrl+Shift+G)', dir: 'distributeV', min: 3 },
-    { label: '=W', title: 'Igualar ancho', dir: 'equalWidth', min: 2 },
-    { label: '=H', title: 'Igualar alto', dir: 'equalHeight', min: 2 },
+    { label: '⇤', title: t.diagram.alignLeft, dir: 'left', min: 2 },
+    { label: '⇥', title: t.diagram.alignRight, dir: 'right', min: 2 },
+    { label: '↑', title: t.diagram.alignTop, dir: 'top', min: 2 },
+    { label: '↓', title: t.diagram.alignBottom, dir: 'bottom', min: 2 },
+    { label: '↔', title: t.diagram.centerH, dir: 'centerH', min: 2 },
+    { label: '↕', title: t.diagram.centerV, dir: 'centerV', min: 2 },
+    { label: '⇔H', title: t.diagram.distributeH, dir: 'distributeH', min: 3 },
+    { label: '⇕V', title: t.diagram.distributeV, dir: 'distributeV', min: 3 },
+    { label: '=W', title: t.diagram.equalWidth, dir: 'equalWidth', min: 2 },
+    { label: '=H', title: t.diagram.equalHeight, dir: 'equalHeight', min: 2 },
   ];
 
   return (
@@ -562,14 +564,14 @@ function DiagramInner({ tabId, initialContent }: InnerProps) {
           {diagramSettings.showTopPanel && (
             <Panel position="top-center">
               <div style={{ display: 'flex', gap: 6, alignItems: 'center', background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, padding: '4px 8px', flexWrap: 'wrap' }}>
-                <button style={btnStyle} onClick={undo} title="Deshacer (Ctrl+Z)">↩ Deshacer</button>
-                <button style={btnStyle} onClick={redo} title="Rehacer (Ctrl+Y)">↪ Rehacer</button>
+                <button style={btnStyle} onClick={undo} title={t.diagram.undoTitle}>{t.diagram.undo}</button>
+                <button style={btnStyle} onClick={redo} title={t.diagram.redoTitle}>{t.diagram.redo}</button>
                 <div style={{ width: 1, height: 20, background: '#1e293b' }} />
 
-                <span style={{ fontSize: 11, color: '#64748b' }}>Flecha:</span>
-                {(['default', 'straight', 'smoothstep'] as const).map(t => (
-                  <button key={t} style={edgeType === t ? activeBtnStyle : btnStyle} onClick={() => setEdgeType(t)}>
-                    {t === 'default' ? 'Curva' : t === 'straight' ? 'Recta' : 'Ortogonal'}
+                <span style={{ fontSize: 11, color: '#64748b' }}>{t.diagram.arrow}</span>
+                {(['default', 'straight', 'smoothstep'] as const).map(et => (
+                  <button key={et} style={edgeType === et ? activeBtnStyle : btnStyle} onClick={() => setEdgeType(et)}>
+                    {et === 'default' ? t.diagram.curved : et === 'straight' ? t.diagram.straight : t.diagram.orthogonal}
                   </button>
                 ))}
                 <div style={{ width: 1, height: 20, background: '#1e293b' }} />
@@ -579,9 +581,9 @@ function DiagramInner({ tabId, initialContent }: InnerProps) {
                   <button
                     style={multiSelected ? activeBtnStyle : btnStyle}
                     onClick={() => setAlignOpen(o => !o)}
-                    title="Organizar nodos seleccionados"
+                    title={t.diagram.organizeTitle}
                   >
-                    📐 Organizar ▾
+                    {t.diagram.organize}
                   </button>
                   {alignOpen && (
                     <>
@@ -591,7 +593,7 @@ function DiagramInner({ tabId, initialContent }: InnerProps) {
                         background: '#1e293b', border: '1px solid #334155', borderRadius: 6,
                         padding: '6px 4px', minWidth: 180, display: 'flex', flexDirection: 'column', gap: 2,
                       }}>
-                        <span style={{ fontSize: 10, color: '#475569', paddingLeft: 6, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>Alinear / Centrar</span>
+                        <span style={{ fontSize: 10, color: '#475569', paddingLeft: 6, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>{t.diagram.alignSection}</span>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 2, padding: '2px 2px 4px' }}>
                           {alignActions.slice(0, 6).map(({ label, title, dir, min }) => (
                             <button
@@ -605,7 +607,7 @@ function DiagramInner({ tabId, initialContent }: InnerProps) {
                             </button>
                           ))}
                         </div>
-                        <span style={{ fontSize: 10, color: '#475569', paddingLeft: 6, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>Distribuir</span>
+                        <span style={{ fontSize: 10, color: '#475569', paddingLeft: 6, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>{t.diagram.distributeSection}</span>
                         <div style={{ display: 'flex', gap: 2, padding: '2px 2px 4px' }}>
                           {alignActions.slice(6, 8).map(({ label, title, dir, min }) => (
                             <button
@@ -619,7 +621,7 @@ function DiagramInner({ tabId, initialContent }: InnerProps) {
                             </button>
                           ))}
                         </div>
-                        <span style={{ fontSize: 10, color: '#475569', paddingLeft: 6, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>Igualar tamaño</span>
+                        <span style={{ fontSize: 10, color: '#475569', paddingLeft: 6, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>{t.diagram.sizeSection}</span>
                         <div style={{ display: 'flex', gap: 2, padding: '2px 2px' }}>
                           {alignActions.slice(8).map(({ label, title, dir, min }) => (
                             <button
@@ -645,7 +647,7 @@ function DiagramInner({ tabId, initialContent }: InnerProps) {
 
                 {/* Export dropdown */}
                 <div style={{ position: 'relative' }}>
-                  <button style={activeBtnStyle} onClick={() => setExportOpen(o => !o)}>⬇ Exportar ▾</button>
+                  <button style={activeBtnStyle} onClick={() => setExportOpen(o => !o)}>{t.diagram.export}</button>
                   {exportOpen && (
                     <>
                       <div style={{ position: 'fixed', inset: 0, zIndex: 49 }} onClick={() => setExportOpen(false)} />
@@ -654,7 +656,7 @@ function DiagramInner({ tabId, initialContent }: InnerProps) {
                         <button style={btnStyle} onClick={() => doExport('svg')}>🖼 SVG</button>
                         <button style={btnStyle} onClick={() => doExport('mermaid')}>🧜 Mermaid</button>
                         <div style={{ padding: '4px 0 2px' }}>
-                          <span style={{ fontSize: 10, color: '#64748b', paddingLeft: 4 }}>Código:</span>
+                          <span style={{ fontSize: 10, color: '#64748b', paddingLeft: 4 }}>{t.diagram.codeLabel}</span>
                           <select
                             value={exportCodeLang}
                             onChange={e => setExportCodeLang(e.target.value as ExportCodeLang)}
@@ -663,15 +665,15 @@ function DiagramInner({ tabId, initialContent }: InnerProps) {
                             <option value="python">Python</option>
                             <option value="javascript">JavaScript</option>
                             <option value="typescript">TypeScript</option>
-                            <option value="pseudocode">Pseudocódigo</option>
+                            <option value="pseudocode">{t.diagram.codePseudo}</option>
                           </select>
-                          <button style={{ ...btnStyle, width: '100%', marginTop: 4 }} onClick={() => doExport('code')}>⚙ Generar</button>
+                          <button style={{ ...btnStyle, width: '100%', marginTop: 4 }} onClick={() => doExport('code')}>{t.diagram.generate}</button>
                         </div>
                       </div>
                     </>
                   )}
                 </div>
-                <button style={btnStyle} onClick={() => fitView({ duration: 300 })} title="Ajustar vista">⊞ Ajustar</button>
+                <button style={btnStyle} onClick={() => fitView({ duration: 300 })} title={t.diagram.fitViewTitle}>{t.diagram.fitView}</button>
               </div>
             </Panel>
           )}
@@ -683,9 +685,9 @@ function DiagramInner({ tabId, initialContent }: InnerProps) {
             <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 100 }} onClick={() => setCodeModalOpen(false)} />
             <div style={{ position: 'fixed', top: '10%', left: '50%', transform: 'translateX(-50%)', width: 600, maxHeight: '80vh', background: '#0f172a', border: '1px solid #334155', borderRadius: 8, zIndex: 101, display: 'flex', flexDirection: 'column', padding: 16 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
-                <span style={{ color: '#e2e8f0', fontWeight: 600, fontSize: 14 }}>Código generado</span>
+                <span style={{ color: '#e2e8f0', fontWeight: 600, fontSize: 14 }}>{t.diagram.generatedCode}</span>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <button style={btnStyle} onClick={() => navigator.clipboard?.writeText(codeOutput)}>Copiar</button>
+                  <button style={btnStyle} onClick={() => navigator.clipboard?.writeText(codeOutput)}>{t.diagram.copy}</button>
                   <button style={btnStyle} onClick={() => setCodeModalOpen(false)}>✕</button>
                 </div>
               </div>
@@ -722,7 +724,7 @@ function DiagramInner({ tabId, initialContent }: InnerProps) {
                   e.stopPropagation();
                 }}
                 onBlur={commitEdgeLabel}
-                placeholder="Etiqueta del conector…"
+                placeholder={t.diagram.edgeLabelPlaceholder}
                 style={{
                   background: '#1e293b',
                   border: '1px solid #60a5fa',
@@ -736,7 +738,7 @@ function DiagramInner({ tabId, initialContent }: InnerProps) {
                   boxShadow: '0 0 0 2px #60a5fa33',
                 }}
               />
-              <span style={{ fontSize: 10, color: '#475569', paddingLeft: 2 }}>Enter = guardar · Esc = cancelar</span>
+              <span style={{ fontSize: 10, color: '#475569', paddingLeft: 2 }}>{t.diagram.edgeLabelHint}</span>
             </div>
           </>
         )}
@@ -761,11 +763,11 @@ function DiagramInner({ tabId, initialContent }: InnerProps) {
               maxHeight: 420,
               overflowY: 'auto',
             }}>
-              <span style={{ color: '#64748b', fontSize: 10, userSelect: 'none' }}>Añadir nodo</span>
+              <span style={{ color: '#64748b', fontSize: 10, userSelect: 'none' }}>{t.diagram.addNode}</span>
 
               {PICKER_GROUPS.map(group => (
-                <div key={group.label}>
-                  <div style={{ fontSize: 9, color: '#475569', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>{group.label}</div>
+                <div key={group.catKey}>
+                  <div style={{ fontSize: 9, color: '#475569', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>{t.diagram[group.catKey]}</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                     {group.types.map(type => (
                       <button
@@ -783,7 +785,7 @@ function DiagramInner({ tabId, initialContent }: InnerProps) {
                           textAlign: 'left',
                         }}
                       >
-                        {NODE_DEFAULTS[type].label}
+                        {t.diagram.nodeTypes[type]}
                       </button>
                     ))}
                   </div>

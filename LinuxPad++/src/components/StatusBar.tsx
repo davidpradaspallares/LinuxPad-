@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { useEditorStore } from "../stores/editorStore";
+import { useTranslation } from "../i18n";
 
 export default function StatusBar() {
+  const t = useTranslation();
   const tab = useEditorStore((s) => s.tabs.find((candidate) => candidate.id === s.activeTabId) ?? null);
   const cursorPosition = useEditorStore((s) => s.activeCursorPosition);
 
@@ -23,14 +25,14 @@ export default function StatusBar() {
     <div className="flex items-center justify-between px-3 h-[24px] bg-blue-600 text-blue-100 text-xs select-none shrink-0">
       <div className="flex items-center gap-4">
         <span className="font-medium">LinuxPad++</span>
-        {tab?.isDirty && <span className="opacity-75">● Modified</span>}
+        {tab?.isDirty && <span className="opacity-75">{t.statusBar.modified}</span>}
       </div>
 
       <div className="flex items-center gap-4">
         <span>
           Ln {line}, Col {column}
         </span>
-        <span>{lines} lines</span>
+        <span>{t.statusBar.lines(lines)}</span>
         <span className="capitalize">{language}</span>
         <span>{encoding}</span>
       </div>

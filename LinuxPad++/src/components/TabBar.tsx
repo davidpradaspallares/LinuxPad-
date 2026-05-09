@@ -2,8 +2,10 @@ import React, { useState } from "react";
 import { X, Plus, FileText, GitGraph } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { useEditorStore } from "../stores/editorStore";
+import { useTranslation } from "../i18n";
 
 export default function TabBar() {
+  const t = useTranslation();
   const tabs = useEditorStore((s) => s.tabs);
   useEditorStore((s) => s.tabsMetaVersion);
   const activeTabId = useEditorStore((s) => s.activeTabId);
@@ -88,7 +90,7 @@ export default function TabBar() {
                   isActive ? "opacity-60" : "",
                   "hover:bg-surface-600 hover:text-slate-100",
                 ].join(" ")}
-                title="Close tab"
+                title={t.tabBar.closeTab}
               >
                 <X size={12} />
               </button>
@@ -99,7 +101,7 @@ export default function TabBar() {
         <button
           onClick={newTab}
           className="flex items-center justify-center px-3 text-slate-500 hover:text-slate-200 hover:bg-surface-800 transition-colors shrink-0"
-          title="New tab (Ctrl+N)"
+          title={t.tabBar.newTab}
         >
           <Plus size={15} />
         </button>
@@ -116,14 +118,14 @@ export default function TabBar() {
               onClick={handleRename}
               className="w-full px-4 py-1.5 text-left hover:bg-surface-700 text-slate-200"
             >
-              Rename
+              {t.tabBar.rename}
             </button>
             <div className="border-t border-surface-600 my-1" />
             <button
               onClick={() => { setMenu(null); closeTab(menu.tabId); }}
               className="w-full px-4 py-1.5 text-left hover:bg-red-900 text-red-300"
             >
-              Close tab
+              {t.tabBar.closeTab}
             </button>
           </div>
         </>

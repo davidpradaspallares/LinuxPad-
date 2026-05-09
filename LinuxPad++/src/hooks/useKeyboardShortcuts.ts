@@ -1,13 +1,11 @@
 import { useEffect } from "react";
-import { open, save } from "@tauri-apps/plugin-dialog";
 import { useEditorStore } from "../stores/editorStore";
+import { openFileWithDialog, saveActiveTab, saveActiveTabAs } from "../services/fileService";
 
 export function useKeyboardShortcuts() {
   const newTab = useEditorStore((s) => s.newTab);
   const newDiagramTab = useEditorStore((s) => s.newDiagramTab);
   const closeTab = useEditorStore((s) => s.closeTab);
-  const openFile = useEditorStore((s) => s.openFile);
-  const saveTab = useEditorStore((s) => s.saveTab);
   const setCommandPaletteOpen = useEditorStore((s) => s.setCommandPaletteOpen);
   const setFindReplaceOpen = useEditorStore((s) => s.setFindReplaceOpen);
   const toggleSidebar = useEditorStore((s) => s.toggleSidebar);
@@ -38,44 +36,19 @@ export function useKeyboardShortcuts() {
 
       if (ctrl && e.key === "o") {
         e.preventDefault();
-        const selected = await open({
-          multiple: false,
-          filters: [
-            { name: "Text Files", extensions: ["txt", "md", "json", "ts", "tsx", "js", "jsx", "rs", "py", "go"] },
-            { name: "All Files", extensions: ["*"] },
-          ],
-        });
-        if (selected && typeof selected === "string") {
-          openFile(selected);
-        }
+        await openFileWithDialog();
         return;
       }
 
       if (ctrl && !e.shiftKey && e.key === "s") {
         e.preventDefault();
-        if (!activeTabId) return;
-        const tab = tabs.find((t) => t.id === activeTabId);
-        if (!tab) return;
-
-        if (tab.path) {
-          await saveTab(activeTabId);
-        } else {
-          const savePath = await save({
-            defaultPath: "untitled.txt",
-            filters: [{ name: "All Files", extensions: ["*"] }],
-          });
-          if (savePath) await saveTab(activeTabId, savePath);
-        }
+        await saveActiveTab();
         return;
       }
 
       if (ctrl && e.shiftKey && e.key === "S") {
         e.preventDefault();
-        if (!activeTabId) return;
-        const savePath = await save({
-          filters: [{ name: "All Files", extensions: ["*"] }],
-        });
-        if (savePath) await saveTab(activeTabId, savePath);
+        await saveActiveTabAs();
         return;
       }
 
@@ -122,5 +95,5 @@ export function useKeyboardShortcuts() {
 
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [closeTab, newDiagramTab, newTab, openFile, saveTab, setActiveTab, setCommandPaletteOpen, setFindReplaceOpen, toggleSidebar]);
+  }, [closeTab, newDiagramTab, newTab, setActiveTab, setCommandPaletteOpen, setFindReplaceOpen, toggleSidebar]);
 }

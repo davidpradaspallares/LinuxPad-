@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { useEditorStore } from "../stores/editorStore";
+import { useTranslation } from "../i18n";
 import type { FileEntry } from "../types";
 
 interface TreeNode extends FileEntry {
@@ -30,6 +31,7 @@ interface TreeItemProps {
 }
 
 function TreeItem({ node, depth, onToggle, onOpen, onDelete, onRename }: TreeItemProps) {
+  const t = useTranslation();
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
 
   const handleClick = () => {
@@ -79,7 +81,7 @@ function TreeItem({ node, depth, onToggle, onOpen, onDelete, onRename }: TreeIte
             onDelete(node.path);
           }}
           className="ml-auto shrink-0 opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-red-900 hover:text-red-300 transition-all"
-          title="Delete"
+          title={t.sidebar.delete}
         >
           <Trash2 size={11} />
         </button>
@@ -96,14 +98,14 @@ function TreeItem({ node, depth, onToggle, onOpen, onDelete, onRename }: TreeIte
               onClick={() => { setMenuPos(null); onRename(node.path); }}
               className="w-full px-4 py-1.5 text-left hover:bg-surface-700 text-slate-200"
             >
-              Rename
+              {t.sidebar.rename}
             </button>
             <div className="border-t border-surface-600 my-1" />
             <button
               onClick={() => { setMenuPos(null); onDelete(node.path); }}
               className="w-full px-4 py-1.5 text-left hover:bg-red-900 text-red-300"
             >
-              Delete
+              {t.sidebar.delete}
             </button>
           </div>
         </>
@@ -129,8 +131,10 @@ function TreeItem({ node, depth, onToggle, onOpen, onDelete, onRename }: TreeIte
 }
 
 export default function Sidebar() {
+  const t = useTranslation();
   const sidebarPath = useEditorStore((s) => s.sidebarPath);
   const setSidebarPath = useEditorStore((s) => s.setSidebarPath);
+  const sidebarHomePath = useEditorStore((s) => s.sidebarHomePath);
   const openFile = useEditorStore((s) => s.openFile);
   const renameTabPath = useEditorStore((s) => s.renameTabPath);
 
@@ -209,8 +213,8 @@ export default function Sidebar() {
   );
 
   const handleDelete = useCallback(async (path: string) => {
-    const name = path.split("/").pop();
-    if (!confirm(`Delete "${name}"?`)) return;
+    const name = path.split("/").pop() ?? path;
+    if (!confirm(t.sidebar.confirmDelete(name))) return;
     try {
       await invoke("delete_path", { path });
       setOpenDirs({});
@@ -222,7 +226,7 @@ export default function Sidebar() {
 
   const handleRename = useCallback(async (path: string) => {
     const oldName = path.split("/").pop()!;
-    const newName = prompt("New name:", oldName);
+    const newName = prompt(t.sidebar.newNamePrompt, oldName);
     if (!newName || newName === oldName) return;
     const newPath = path.slice(0, path.lastIndexOf("/") + 1) + newName;
     try {
@@ -236,7 +240,7 @@ export default function Sidebar() {
   }, [refresh, renameTabPath]);
 
   const handleNewFile = async () => {
-    const name = prompt("File name:");
+    const name = prompt(t.sidebar.newFilePrompt);
     if (!name) return;
     const path = `${sidebarPath}/${name}`;
     await invoke("create_file", { path });
@@ -244,54 +248,64 @@ export default function Sidebar() {
   };
 
   const handleNewFolder = async () => {
-    const name = prompt("Folder name:");
+    const name = prompt(t.sidebar.newFolderPrompt);
     if (!name) return;
     const path = `${sidebarPath}/${name}`;
     await invoke("create_directory", { path });
     refresh();
   };
 
-  const goHome = async () => {
-    const home = await invoke<string>("get_home_dir");
-    setSidebarPath(home);
+  const goHome = useCallback(async () => {
+    const target = sidebarHomePath === "~"
+      ? await invoke<string>("get_home_dir")
+      : sidebarHomePath;
+    setSidebarPath(target);
     setOpenDirs({});
     setTree([]);
-    refresh();
-  };
+    setLoading(true);
+    try {
+      const nodes = await loadDir(target);
+      setTree(nodes);
+    } catch (err) {
+      console.error("Failed to navigate home:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [sidebarHomePath, setSidebarPath, loadDir]);
 
   return (
     <div className="flex flex-col h-full bg-surface-900 border-r border-surface-700 w-56 shrink-0 select-none">
       {/* Header */}
       <div className="flex items-center justify-between px-2 py-1.5 border-b border-surface-700 shrink-0">
         <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider truncate">
-          Explorer
+          {t.sidebar.title}
         </span>
         <div className="flex items-center gap-1">
           <button
             onClick={handleNewFile}
             className="p-1 rounded text-slate-500 hover:text-slate-200 hover:bg-surface-700 transition-colors"
-            title="New file"
+            title={t.sidebar.newFile}
           >
             <FilePlus size={13} />
           </button>
           <button
             onClick={handleNewFolder}
             className="p-1 rounded text-slate-500 hover:text-slate-200 hover:bg-surface-700 transition-colors"
-            title="New folder"
+            title={t.sidebar.newFolder}
           >
             <FolderPlus size={13} />
           </button>
           <button
             onClick={goHome}
             className="p-1 rounded text-slate-500 hover:text-slate-200 hover:bg-surface-700 transition-colors"
-            title="Go home"
+            title={t.sidebar.goHome}
           >
             <Home size={13} />
           </button>
           <button
             onClick={refresh}
             className={`p-1 rounded text-slate-500 hover:text-slate-200 hover:bg-surface-700 transition-colors ${loading ? "animate-spin" : ""}`}
-            title="Refresh"
+            title={t.sidebar.refresh}
           >
             <RefreshCw size={13} />
           </button>
@@ -306,9 +320,9 @@ export default function Sidebar() {
       {/* Tree */}
       <div className="flex-1 overflow-y-auto py-1">
         {loading && tree.length === 0 ? (
-          <div className="px-4 py-2 text-xs text-slate-600">Loading…</div>
+          <div className="px-4 py-2 text-xs text-slate-600">{t.sidebar.loading}</div>
         ) : tree.length === 0 ? (
-          <div className="px-4 py-2 text-xs text-slate-600">Empty directory</div>
+          <div className="px-4 py-2 text-xs text-slate-600">{t.sidebar.emptyDir}</div>
         ) : (
           tree.map((node) => (
             <TreeItem

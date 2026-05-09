@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { Search, FileText, Folder, Command } from "lucide-react";
-import { open, save } from "@tauri-apps/plugin-dialog";
 import { useEditorStore } from "../stores/editorStore";
+import { openFileWithDialog, saveActiveTab, saveActiveTabAs } from "../services/fileService";
+import { useTranslation } from "../i18n";
 import type { CommandItem } from "../types";
 
 interface CommandPaletteProps {
@@ -9,11 +10,10 @@ interface CommandPaletteProps {
 }
 
 export default function CommandPalette({ onClose }: CommandPaletteProps) {
+  const t = useTranslation();
   const tabs = useEditorStore((s) => s.tabs);
   const tabsMetaVersion = useEditorStore((s) => s.tabsMetaVersion);
   const newTab = useEditorStore((s) => s.newTab);
-  const openFile = useEditorStore((s) => s.openFile);
-  const saveTab = useEditorStore((s) => s.saveTab);
   const closeTab = useEditorStore((s) => s.closeTab);
   const toggleSidebar = useEditorStore((s) => s.toggleSidebar);
   const setFindReplaceOpen = useEditorStore((s) => s.setFindReplaceOpen);
@@ -30,52 +30,33 @@ export default function CommandPalette({ onClose }: CommandPaletteProps) {
   const allCommands = useMemo<CommandItem[]>(() => [
     {
       id: "new-tab",
-      label: "New Tab",
-      description: "Open a blank editor tab",
+      label: t.commandPalette.newTab,
+      description: t.commandPalette.newTabDesc,
       shortcut: "Ctrl+N",
       action: () => newTab(),
     },
     {
       id: "open-file",
-      label: "Open File…",
-      description: "Browse and open a file",
+      label: t.commandPalette.openFile,
+      description: t.commandPalette.openFileDesc,
       shortcut: "Ctrl+O",
-      action: async () => {
-        const path = await open({ multiple: false });
-        if (path && typeof path === "string") openFile(path);
-      },
+      action: openFileWithDialog,
     },
     {
       id: "save",
-      label: "Save",
+      label: t.commandPalette.save,
       shortcut: "Ctrl+S",
-      action: async () => {
-        const { activeTabId } = useEditorStore.getState();
-        if (!activeTabId) return;
-        const tab = tabs.find((t) => t.id === activeTabId);
-        if (!tab) return;
-        if (tab.path) {
-          await saveTab(activeTabId);
-        } else {
-          const path = await save({ defaultPath: "untitled.txt" });
-          if (path) await saveTab(activeTabId, path);
-        }
-      },
+      action: saveActiveTab,
     },
     {
       id: "save-as",
-      label: "Save As…",
+      label: t.commandPalette.saveAs,
       shortcut: "Ctrl+Shift+S",
-      action: async () => {
-        const { activeTabId } = useEditorStore.getState();
-        if (!activeTabId) return;
-        const path = await save({ filters: [{ name: "All Files", extensions: ["*"] }] });
-        if (path) await saveTab(activeTabId, path);
-      },
+      action: saveActiveTabAs,
     },
     {
       id: "close-tab",
-      label: "Close Tab",
+      label: t.commandPalette.closeTab,
       shortcut: "Ctrl+W",
       action: () => {
         const { activeTabId } = useEditorStore.getState();
@@ -84,25 +65,25 @@ export default function CommandPalette({ onClose }: CommandPaletteProps) {
     },
     {
       id: "toggle-sidebar",
-      label: "Toggle Sidebar",
+      label: t.commandPalette.toggleSidebar,
       shortcut: "Ctrl+B",
       action: () => toggleSidebar(),
     },
     {
       id: "find-replace",
-      label: "Find & Replace",
+      label: t.commandPalette.findReplace,
       shortcut: "Ctrl+F",
       action: () => setFindReplaceOpen(true),
     },
     ...tabs
-      .filter((t) => t.path !== null)
-      .map((t) => ({
-        id: `goto-${t.id}`,
-        label: t.title,
-        description: t.path ?? undefined,
-        action: () => setActiveTab(t.id),
+      .filter((tab) => tab.path !== null)
+      .map((tab) => ({
+        id: `goto-${tab.id}`,
+        label: tab.title,
+        description: tab.path ?? undefined,
+        action: () => setActiveTab(tab.id),
       })),
-  ], [closeTab, newTab, openFile, saveTab, setActiveTab, setFindReplaceOpen, tabs, tabsMetaVersion, toggleSidebar]);
+  ], [t, closeTab, newTab, setActiveTab, setFindReplaceOpen, tabs, tabsMetaVersion, toggleSidebar]);
 
   const filtered = useMemo(() => {
     if (!query) return allCommands;
@@ -161,7 +142,7 @@ export default function CommandPalette({ onClose }: CommandPaletteProps) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Search commands or open files…"
+            placeholder={t.commandPalette.searchPlaceholder}
             className="flex-1 bg-transparent text-slate-200 outline-none placeholder-slate-500 text-sm"
           />
           <kbd className="hidden sm:flex items-center gap-1 px-1.5 py-0.5 bg-surface-700 rounded text-xs text-slate-400 shrink-0">
@@ -172,7 +153,7 @@ export default function CommandPalette({ onClose }: CommandPaletteProps) {
         {/* Results */}
         <div ref={listRef} className="max-h-72 overflow-y-auto py-1">
           {filtered.length === 0 ? (
-            <div className="px-4 py-3 text-sm text-slate-500">No results</div>
+            <div className="px-4 py-3 text-sm text-slate-500">{t.commandPalette.noResults}</div>
           ) : (
             filtered.map((cmd, idx) => (
               <button

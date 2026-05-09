@@ -1,5 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
-import { open, save } from "@tauri-apps/plugin-dialog";
+import { useEffect, useRef, useState } from "react";
 import {
   PanelLeft,
   FilePlus,
@@ -12,10 +11,14 @@ import {
   Info,
   Braces,
   GitGraph,
+  MessageSquare,
 } from "lucide-react";
 
+import { open } from "@tauri-apps/plugin-dialog";
 import { formatContent, FORMATTABLE_LANGUAGES, sniffLanguage } from "./utils/formatter";
 import { editorBridge } from "./utils/editorBridge";
+import { openFileWithDialog, saveActiveTab } from "./services/fileService";
+import { DEFAULT_COLOR, ERROR_DISPLAY_MS } from "./constants";
 
 import Sidebar from "./components/Sidebar";
 import TabBar from "./components/TabBar";
@@ -25,17 +28,22 @@ import StatusBar from "./components/StatusBar";
 import FindReplace from "./components/FindReplace";
 import CommandPalette from "./components/CommandPalette";
 import InfoModal from "./components/InfoModal";
+import ToolbarBtn from "./components/ToolbarBtn";
+import ErrorBoundary from "./components/ErrorBoundary";
+import ChatPanel from "./components/ChatPanel";
 
 import { useEditorStore } from "./stores/editorStore";
+import { useTranslation } from "./i18n";
 import { useFileWatcher } from "./hooks/useFileWatcher";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 
 export default function App() {
+  const t = useTranslation();
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
   const [formatError, setFormatError] = useState(false);
   const [triggerInput, setTriggerInput] = useState("");
-  const [colorInput, setColorInput] = useState("#22c55e");
+  const [colorInput, setColorInput] = useState(DEFAULT_COLOR);
   const [settingsError, setSettingsError] = useState("");
   const settingsMenuRef = useRef<HTMLDivElement | null>(null);
 
@@ -50,8 +58,6 @@ export default function App() {
 
   const newTab = useEditorStore((s) => s.newTab);
   const newDiagramTab = useEditorStore((s) => s.newDiagramTab);
-  const openFile = useEditorStore((s) => s.openFile);
-  const saveTab = useEditorStore((s) => s.saveTab);
   const activeTabId = useEditorStore((s) => s.activeTabId);
   const tabs = useEditorStore((s) => s.tabs);
   const restoreSession = useEditorStore((s) => s.restoreSession);
@@ -61,6 +67,15 @@ export default function App() {
   const toggleColorRule = useEditorStore((s) => s.toggleColorRule);
   const diagramSettings = useEditorStore((s) => s.diagramSettings);
   const setDiagramSetting = useEditorStore((s) => s.setDiagramSetting);
+  const sidebarHomePath = useEditorStore((s) => s.sidebarHomePath);
+  const setSidebarHomePath = useEditorStore((s) => s.setSidebarHomePath);
+  const setSidebarPath = useEditorStore((s) => s.setSidebarPath);
+  const language = useEditorStore((s) => s.language);
+  const setLanguage = useEditorStore((s) => s.setLanguage);
+  const chatPanelOpen = useEditorStore((s) => s.chatPanelOpen);
+  const toggleChatPanel = useEditorStore((s) => s.toggleChatPanel);
+  const aiConfig = useEditorStore((s) => s.aiConfig);
+  const setAiConfig = useEditorStore((s) => s.setAiConfig);
 
   // Activate hooks
   useFileWatcher();
@@ -87,35 +102,6 @@ export default function App() {
     };
   }, [settingsMenuOpen]);
 
-  const handleOpenFile = async () => {
-    const selected = await open({
-      multiple: false,
-      filters: [
-        { name: "Text / Code", extensions: ["txt", "md", "json", "ts", "tsx", "js", "jsx", "rs", "py", "go", "css", "html", "yaml", "toml"] },
-        { name: "All Files", extensions: ["*"] },
-      ],
-    });
-    if (selected && typeof selected === "string") {
-      openFile(selected);
-    }
-  };
-
-  const handleSave = async () => {
-    if (!activeTabId) return;
-    const tab = tabs.find((t) => t.id === activeTabId);
-    if (!tab) return;
-
-    if (tab.path) {
-      await saveTab(activeTabId);
-    } else {
-      const path = await save({
-        defaultPath: "untitled.txt",
-        filters: [{ name: "All Files", extensions: ["*"] }],
-      });
-      if (path) await saveTab(activeTabId, path);
-    }
-  };
-
   const setTabContent = useEditorStore((s) => s.setTabContent);
 
   const handleFormat = () => {
@@ -132,11 +118,19 @@ export default function App() {
       editorBridge.applyContent?.(formatted);
     } catch {
       setFormatError(true);
-      setTimeout(() => setFormatError(false), 2000);
+      setTimeout(() => setFormatError(false), ERROR_DISPLAY_MS);
     }
   };
 
-  const normalizeHex = (value: string) => {
+  const handlePickHomeFolder = async () => {
+    const selected = await open({ directory: true, multiple: false });
+    if (selected && typeof selected === "string") {
+      setSidebarHomePath(selected);
+      setSidebarPath(selected);
+    }
+  };
+
+  const normalizeHex = (value: string): string => {
     const trimmed = value.trim();
     if (/^#[0-9a-fA-F]{6}$/.test(trimmed)) return trimmed.toLowerCase();
     return "";
@@ -147,17 +141,17 @@ export default function App() {
     const color = normalizeHex(colorInput);
 
     if (!trigger) {
-      setSettingsError("El trigger no puede estar vacio.");
+      setSettingsError(t.settings.errorTriggerEmpty);
       return;
     }
 
     if (!color) {
-      setSettingsError("El color debe tener formato #RRGGBB.");
+      setSettingsError(t.settings.errorColorFormat);
       return;
     }
 
     if (colorRules.some((rule) => rule.trigger === trigger)) {
-      setSettingsError("Ya existe una regla con ese trigger exacto.");
+      setSettingsError(t.settings.errorTriggerDuplicate);
       return;
     }
 
@@ -176,52 +170,55 @@ export default function App() {
         </span>
 
         {/* Toolbar buttons */}
-        <ToolbarBtn onClick={toggleSidebar} title="Toggle sidebar (Ctrl+B)">
+        <ToolbarBtn onClick={toggleSidebar} title={t.toolbar.toggleSidebar}>
           <PanelLeft size={15} />
         </ToolbarBtn>
-        <ToolbarBtn onClick={newTab} title="New tab (Ctrl+N)">
+        <ToolbarBtn onClick={newTab} title={t.toolbar.newTab}>
           <FilePlus size={15} />
         </ToolbarBtn>
-        <ToolbarBtn onClick={newDiagramTab} title="New diagram (Ctrl+D)">
+        <ToolbarBtn onClick={newDiagramTab} title={t.toolbar.newDiagram}>
           <GitGraph size={15} />
         </ToolbarBtn>
-        <ToolbarBtn onClick={handleOpenFile} title="Open file (Ctrl+O)">
+        <ToolbarBtn onClick={openFileWithDialog} title={t.toolbar.openFile}>
           <FolderOpen size={15} />
         </ToolbarBtn>
-        <ToolbarBtn onClick={handleSave} title="Save (Ctrl+S)">
+        <ToolbarBtn onClick={saveActiveTab} title={t.toolbar.save}>
           <Save size={15} />
         </ToolbarBtn>
         <ToolbarBtn
           onClick={toggleWordWrap}
-          title={`Word wrap: ${wordWrapEnabled ? "ON" : "OFF"}`}
+          title={t.toolbar.wordWrap(wordWrapEnabled)}
           active={wordWrapEnabled}
         >
           <WrapText size={15} />
         </ToolbarBtn>
         <ToolbarBtn
           onClick={handleFormat}
-          title="Formatear documento"
+          title={t.toolbar.formatDocument}
           error={formatError}
         >
           <Braces size={15} />
         </ToolbarBtn>
+        <ToolbarBtn onClick={toggleChatPanel} title={t.toolbar.toggleChat} active={chatPanelOpen}>
+          <MessageSquare size={15} />
+        </ToolbarBtn>
         <div className="flex-1" />
 
-        <ToolbarBtn onClick={() => setFindReplaceOpen(true)} title="Find & replace (Ctrl+F)">
+        <ToolbarBtn onClick={() => setFindReplaceOpen(true)} title={t.toolbar.findReplace}>
           <Search size={15} />
         </ToolbarBtn>
-        <ToolbarBtn onClick={() => setCommandPaletteOpen(true)} title="Command palette (Ctrl+K)">
+        <ToolbarBtn onClick={() => setCommandPaletteOpen(true)} title={t.toolbar.commandPalette}>
           <Command size={15} />
         </ToolbarBtn>
-        <ToolbarBtn onClick={() => setInfoOpen(true)} title="Información">
+        <ToolbarBtn onClick={() => setInfoOpen(true)} title={t.toolbar.info}>
           <Info size={15} />
         </ToolbarBtn>
 
         <div className="relative" ref={settingsMenuRef}>
           <ToolbarBtn
             onClick={() => setSettingsMenuOpen((prev) => !prev)}
-            title="Settings"
             active={settingsMenuOpen}
+            title={t.toolbar.settings}
           >
             <Settings size={15} />
           </ToolbarBtn>
@@ -233,13 +230,13 @@ export default function App() {
               aria-label="Settings menu"
             >
               <div className="px-3 py-2 border-b border-surface-700 text-sm font-medium text-slate-200">
-                Configuracion
+                {t.settings.title}
               </div>
 
               <div className="px-3 pt-3 pb-2 border-b border-surface-700">
-                <div className="text-xs font-semibold text-slate-300 mb-2">Reglas de color</div>
+                <div className="text-xs font-semibold text-slate-300 mb-2">{t.settings.colorRules}</div>
 
-                <label className="block text-[11px] text-slate-400 mb-1">Trigger literal</label>
+                <label className="block text-[11px] text-slate-400 mb-1">{t.settings.triggerLabel}</label>
                 <input
                   type="text"
                   value={triggerInput}
@@ -247,7 +244,7 @@ export default function App() {
                     setTriggerInput(e.target.value);
                     if (settingsError) setSettingsError("");
                   }}
-                  placeholder="Ej: |, 3, if"
+                  placeholder={t.settings.triggerPlaceholder}
                   className="w-full h-8 px-2 rounded bg-surface-950 border border-surface-700 text-xs text-slate-200 outline-none focus:border-blue-500"
                 />
 
@@ -261,7 +258,7 @@ export default function App() {
                         if (settingsError) setSettingsError("");
                       }}
                       className="h-8 w-9 rounded border border-surface-700 bg-surface-950 p-0"
-                      title="Seleccionar color"
+                      title={t.settings.selectColor}
                     />
                   </div>
                   <input
@@ -278,7 +275,7 @@ export default function App() {
                     onClick={handleAddColorRule}
                     className="h-8 px-3 rounded bg-blue-600 hover:bg-blue-500 text-[11px] font-semibold text-white"
                   >
-                    Agregar
+                    {t.settings.add}
                   </button>
                 </div>
 
@@ -290,7 +287,7 @@ export default function App() {
               <div className="max-h-52 overflow-y-auto p-2">
                 {colorRules.length === 0 && (
                   <p className="text-[11px] text-slate-500 px-1 py-2">
-                    No hay reglas aun.
+                    {t.settings.noRules}
                   </p>
                 )}
 
@@ -306,7 +303,7 @@ export default function App() {
                           ? "bg-emerald-700/60 text-emerald-100"
                           : "bg-surface-700 text-slate-300"
                       }`}
-                      title={rule.enabled ? "Desactivar regla" : "Activar regla"}
+                      title={rule.enabled ? t.settings.disableRule : t.settings.enableRule}
                     >
                       {rule.enabled ? "ON" : "OFF"}
                     </button>
@@ -324,7 +321,7 @@ export default function App() {
                     <button
                       onClick={() => removeColorRule(rule.id)}
                       className="h-6 px-2 rounded text-[10px] font-semibold text-red-300 hover:text-red-200 hover:bg-red-500/15"
-                      title="Eliminar regla"
+                      title={t.settings.deleteRule}
                     >
                       Del
                     </button>
@@ -333,14 +330,58 @@ export default function App() {
               </div>
 
               <div className="px-3 pt-3 pb-2 border-t border-surface-700">
-                <div className="text-xs font-semibold text-slate-300 mb-2">Diagramas</div>
+                <div className="text-xs font-semibold text-slate-300 mb-2">{t.settings.homeFolder}</div>
+                <div className="flex items-center gap-2">
+                  <span className="flex-1 text-[11px] text-slate-400 truncate" title={sidebarHomePath}>
+                    {sidebarHomePath === "~"
+                      ? t.settings.systemHome
+                      : sidebarHomePath.replace(/^\/home\/[^/]+/, "~")}
+                  </span>
+                  <button
+                    onClick={handlePickHomeFolder}
+                    className="h-7 px-2 rounded bg-surface-700 hover:bg-surface-600 text-[11px] text-slate-200 shrink-0"
+                  >
+                    {t.settings.change}
+                  </button>
+                  {sidebarHomePath !== "~" && (
+                    <button
+                      onClick={() => setSidebarHomePath("~")}
+                      className="h-7 px-2 rounded bg-surface-700 hover:bg-surface-600 text-[11px] text-slate-400 shrink-0"
+                      title={t.settings.resetHome}
+                    >
+                      {t.settings.reset}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="px-3 pt-3 pb-2 border-t border-surface-700">
+                <div className="text-xs font-semibold text-slate-300 mb-2">{t.settings.language}</div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setLanguage("es")}
+                    className={`h-7 px-3 rounded text-[11px] font-semibold ${language === "es" ? "bg-blue-600 text-white" : "bg-surface-700 hover:bg-surface-600 text-slate-300"}`}
+                  >
+                    Español
+                  </button>
+                  <button
+                    onClick={() => setLanguage("en")}
+                    className={`h-7 px-3 rounded text-[11px] font-semibold ${language === "en" ? "bg-blue-600 text-white" : "bg-surface-700 hover:bg-surface-600 text-slate-300"}`}
+                  >
+                    English
+                  </button>
+                </div>
+              </div>
+
+              <div className="px-3 pt-3 pb-2 border-t border-surface-700">
+                <div className="text-xs font-semibold text-slate-300 mb-2">{t.settings.diagrams}</div>
                 {([
-                  ['showMiniMap',         'Minimapa'],
-                  ['showControls',        'Controles de zoom'],
-                  ['showBackground',      'Fondo (puntos)'],
-                  ['showToolbar',         'Barra de nodos'],
-                  ['showPropertiesPanel', 'Panel de propiedades'],
-                  ['showTopPanel',        'Barra superior'],
+                  ['showMiniMap',         t.settings.minimap],
+                  ['showControls',        t.settings.zoomControls],
+                  ['showBackground',      t.settings.background],
+                  ['showToolbar',         t.settings.nodeToolbar],
+                  ['showPropertiesPanel', t.settings.propertiesPanel],
+                  ['showTopPanel',        t.settings.topBar],
                 ] as const).map(([key, label]) => (
                   <div key={key} className="flex items-center justify-between py-1">
                     <span className="text-xs text-slate-300">{label}</span>
@@ -357,7 +398,7 @@ export default function App() {
                   </div>
                 ))}
                 <div className="flex items-center justify-between py-1">
-                  <span className="text-xs text-slate-300">Área de conexión</span>
+                  <span className="text-xs text-slate-300">{t.settings.connectionArea}</span>
                   <div className="flex items-center gap-1">
                     <input
                       type="range" min={8} max={60} step={1}
@@ -368,6 +409,85 @@ export default function App() {
                     <span className="text-[10px] text-slate-400 w-5 text-right">{diagramSettings.handleHitArea}</span>
                   </div>
                 </div>
+              </div>
+
+              <div className="px-3 pt-3 pb-3 border-t border-surface-700">
+                <div className="text-xs font-semibold text-slate-300 mb-2">{t.ai.title}</div>
+                <div className="flex gap-2 mb-3">
+                  <button
+                    onClick={() => setAiConfig({ provider: 'openai' })}
+                    className={`h-7 px-3 rounded text-[11px] font-semibold ${aiConfig.provider === 'openai' ? 'bg-blue-600 text-white' : 'bg-surface-700 hover:bg-surface-600 text-slate-300'}`}
+                  >
+                    OpenAI
+                  </button>
+                  <button
+                    onClick={() => setAiConfig({ provider: 'anthropic' })}
+                    className={`h-7 px-3 rounded text-[11px] font-semibold ${aiConfig.provider === 'anthropic' ? 'bg-blue-600 text-white' : 'bg-surface-700 hover:bg-surface-600 text-slate-300'}`}
+                  >
+                    Anthropic
+                  </button>
+                  <button
+                    onClick={() => setAiConfig({ provider: 'deepseek' })}
+                    className={`h-7 px-3 rounded text-[11px] font-semibold ${aiConfig.provider === 'deepseek' ? 'bg-blue-600 text-white' : 'bg-surface-700 hover:bg-surface-600 text-slate-300'}`}
+                  >
+                    DeepSeek
+                  </button>
+                </div>
+                {aiConfig.provider === 'openai' ? (
+                  <>
+                    <label className="block text-[11px] text-slate-400 mb-1">{t.ai.openaiKey}</label>
+                    <input
+                      type="password"
+                      value={aiConfig.openaiApiKey}
+                      onChange={(e) => setAiConfig({ openaiApiKey: e.target.value })}
+                      placeholder={t.ai.keyPlaceholder}
+                      className="w-full h-8 px-2 rounded bg-surface-950 border border-surface-700 text-xs text-slate-200 outline-none focus:border-blue-500 mb-2"
+                    />
+                    <label className="block text-[11px] text-slate-400 mb-1">{t.ai.openaiModel}</label>
+                    <input
+                      type="text"
+                      value={aiConfig.openaiModel}
+                      onChange={(e) => setAiConfig({ openaiModel: e.target.value })}
+                      className="w-full h-8 px-2 rounded bg-surface-950 border border-surface-700 text-xs text-slate-200 outline-none focus:border-blue-500"
+                    />
+                  </>
+                ) : aiConfig.provider === 'anthropic' ? (
+                  <>
+                    <label className="block text-[11px] text-slate-400 mb-1">{t.ai.anthropicKey}</label>
+                    <input
+                      type="password"
+                      value={aiConfig.anthropicApiKey}
+                      onChange={(e) => setAiConfig({ anthropicApiKey: e.target.value })}
+                      placeholder={t.ai.keyPlaceholder}
+                      className="w-full h-8 px-2 rounded bg-surface-950 border border-surface-700 text-xs text-slate-200 outline-none focus:border-blue-500 mb-2"
+                    />
+                    <label className="block text-[11px] text-slate-400 mb-1">{t.ai.anthropicModel}</label>
+                    <input
+                      type="text"
+                      value={aiConfig.anthropicModel}
+                      onChange={(e) => setAiConfig({ anthropicModel: e.target.value })}
+                      className="w-full h-8 px-2 rounded bg-surface-950 border border-surface-700 text-xs text-slate-200 outline-none focus:border-blue-500"
+                    />
+                  </>
+                ) : (
+                  <>
+                    <label className="block text-[11px] text-slate-400 mb-1">{t.ai.deepseekKey}</label>
+                    <input
+                      type="password"
+                      value={aiConfig.deepseekApiKey}
+                      onChange={(e) => setAiConfig({ deepseekApiKey: e.target.value })}
+                      placeholder={t.ai.keyPlaceholder}
+                      className="w-full h-8 px-2 rounded bg-surface-950 border border-surface-700 text-xs text-slate-200 outline-none focus:border-blue-500 mb-2"
+                    />
+                    <label className="block text-[11px] text-slate-400 mb-1">{t.ai.deepseekModel}</label>
+                    <input
+                      type="text"
+                      value={aiConfig.deepseekModel}
+                      onChange={(e) => setAiConfig({ deepseekModel: e.target.value })}
+                      className="w-full h-8 px-2 rounded bg-surface-950 border border-surface-700 text-xs text-slate-200 outline-none focus:border-blue-500"
+                    />
+                  </>
+                )}
               </div>
             </div>
           )}
@@ -389,14 +509,19 @@ export default function App() {
           )}
 
           {/* Editor area — Monaco for code tabs, DiagramEditor for diagram tabs */}
-          {(() => {
-            const activeTab = tabs.find((t) => t.id === activeTabId);
-            if (activeTab?.type === "diagram") {
-              return <DiagramEditor key={activeTab.id} tabId={activeTab.id} content={activeTab.content} />;
-            }
-            return <Editor />;
-          })()}
+          <ErrorBoundary>
+            {(() => {
+              const activeTab = tabs.find((t) => t.id === activeTabId);
+              if (activeTab?.type === "diagram") {
+                return <DiagramEditor key={activeTab.id} tabId={activeTab.id} content={activeTab.content} />;
+              }
+              return <Editor />;
+            })()}
+          </ErrorBoundary>
         </div>
+
+        {/* Chat panel */}
+        {chatPanelOpen && <ChatPanel />}
       </div>
 
       {/* ── Status bar ───────────────────────────────────────────── */}
@@ -411,32 +536,3 @@ export default function App() {
   );
 }
 
-function ToolbarBtn({
-  onClick,
-  title,
-  active,
-  error,
-  children,
-}: {
-  onClick: () => void;
-  title?: string;
-  active?: boolean;
-  error?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      title={title}
-      className={`flex items-center justify-center w-7 h-7 rounded transition-colors ${
-        error
-          ? "text-red-400 bg-red-500/20"
-          : active
-          ? "text-blue-300 bg-surface-700"
-          : "text-slate-400 hover:text-slate-100 hover:bg-surface-700"
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
